@@ -108,8 +108,16 @@ local Config = {
 
 local Sound = {
   effects = {
-    explosion = {id = 0, note = nil, duration = 30},
-    pickup = {id = 1, note = nil, duration = 8},
+    explosion = {
+      id = 0,
+      note = nil,
+      duration = 30
+    },
+    pickup = {
+      id = 1,
+      note = nil,
+      duration = 8
+    },
     -- Add new sounds here:
     -- menu_select = {id = 2, note = nil, duration = 10},
     -- player_death = {id = 3, note = nil, duration = 20},
@@ -183,14 +191,18 @@ local POWERUP_TYPES = {
     weight = 50,
     color = COLOR_YELLOW,
     label = "B",
-    apply = function(player) player.maxBombs = player.maxBombs + 1 end
+    apply = function(player)
+      player.maxBombs = player.maxBombs + 1
+    end
   },
   {
     type = "power",
     weight = 50,
     color = COLOR_ORANGE,
     label = "P",
-    apply = function(player) player.bombPower = player.bombPower + 1 end
+    apply = function(player)
+      player.bombPower = player.bombPower + 1
+    end
   },
 }
 
@@ -567,12 +579,44 @@ end
 --------------------------------------------------------------------------------
 
 local MENU_ITEMS = {
-  {label = "1 Player Game", action = function() State.two_player_mode = false; State.game_state = GAME_STATE_PLAYING; Game.init() end},
-  {label = "2 Player Game", action = function() State.two_player_mode = true; State.game_state = GAME_STATE_PLAYING; Game.init() end},
-  {label = "Settings", action = function() State.game_state = GAME_STATE_SETTINGS end},
-  {label = "Help", action = function() State.game_state = GAME_STATE_HELP end},
-  {label = "Credits", action = function() State.game_state = GAME_STATE_CREDITS end},
-  {label = "Exit", action = exit},
+  {
+    label = "1 Player Game",
+    action = function()
+      State.two_player_mode = false
+      State.game_state = GAME_STATE_PLAYING
+      Game.init()
+    end
+  },
+  {
+    label = "2 Player Game",
+    action = function()
+      State.two_player_mode = true
+      State.game_state = GAME_STATE_PLAYING
+      Game.init()
+    end
+  },
+  {
+    label = "Settings",
+    action = function()
+      State.game_state = GAME_STATE_SETTINGS
+    end
+  },
+  {
+    label = "Help",
+    action = function()
+      State.game_state = GAME_STATE_HELP
+    end
+  },
+  {
+    label = "Credits",
+    action = function()
+      State.game_state = GAME_STATE_CREDITS
+    end
+  },
+  {
+    label = "Exit",
+    action = exit
+  },
 }
 
 local function get_menu_color(index)
@@ -684,15 +728,74 @@ end
 -- Settings definition: each setting maps to a pmem slot
 -- pmem stores integers, so we use multipliers for decimals
 local SETTINGS_ITEMS = {
-  {label = "Start Bombs", path = {"player", "start_bombs"}, min = 1, max = 5, step = 1, pmem_slot = 0},
-  {label = "Start Power", path = {"player", "start_power"}, min = 1, max = 5, step = 1, pmem_slot = 1},
-  {label = "Move Speed", path = {"player", "move_speed"}, min = 1, max = 4, step = 1, pmem_slot = 2},
-  {label = "Bomb Timer", path = {"bomb", "timer"}, min = 60, max = 180, step = 15, pmem_slot = 3},
-  {label = "AI Speed", path = {"ai", "move_delay"}, min = 10, max = 40, step = 5, pmem_slot = 4},
-  {label = "Wall Density", path = {"map", "breakable_wall_chance"}, min = 30, max = 90, step = 10, pmem_slot = 5, multiplier = 100},
-  {label = "Powerup Chance", path = {"map", "powerup_spawn_chance"}, min = 10, max = 50, step = 5, pmem_slot = 6, multiplier = 100},
-  {label = "Map Style", path = {"map", "generator"}, min = 1, max = 4, step = 1, pmem_slot = 7, is_enum = true,
-   enum_values = {"classic", "arena", "maze", "corridors"}},
+  {
+    label = "Start Bombs",
+    path = {"player", "start_bombs"},
+    min = 1,
+    max = 5,
+    step = 1,
+    pmem_slot = 0
+  },
+  {
+    label = "Start Power",
+    path = {"player", "start_power"},
+    min = 1,
+    max = 5,
+    step = 1,
+    pmem_slot = 1
+  },
+  {
+    label = "Move Speed",
+    path = {"player", "move_speed"},
+    min = 1,
+    max = 4,
+    step = 1,
+    pmem_slot = 2
+  },
+  {
+    label = "Bomb Timer",
+    path = {"bomb", "timer"},
+    min = 60,
+    max = 180,
+    step = 15,
+    pmem_slot = 3
+  },
+  {
+    label = "AI Speed",
+    path = {"ai", "move_delay"},
+    min = 10,
+    max = 40,
+    step = 5,
+    pmem_slot = 4
+  },
+  {
+    label = "Wall Density",
+    path = {"map", "breakable_wall_chance"},
+    min = 30,
+    max = 90,
+    step = 10,
+    pmem_slot = 5,
+    multiplier = 100
+  },
+  {
+    label = "Powerup Chance",
+    path = {"map", "powerup_spawn_chance"},
+    min = 10,
+    max = 50,
+    step = 5,
+    pmem_slot = 6,
+    multiplier = 100
+  },
+  {
+    label = "Map Style",
+    path = {"map", "generator"},
+    min = 1,
+    max = 4,
+    step = 1,
+    pmem_slot = 7,
+    is_enum = true,
+    enum_values = {"classic", "arena", "maze", "corridors"}
+  },
 }
 
 -- Magic number to detect if pmem has been initialized
@@ -1163,7 +1266,10 @@ function AI.move_and_bomb(player, target)
     local pwDist = math.abs(powerup.gridX - player.gridX) + math.abs(powerup.gridY - player.gridY)
     local targetDist = math.abs(target.gridX - player.gridX) + math.abs(target.gridY - player.gridY)
     if pwDist < targetDist or pwDist <= 5 then
-      actualTarget = {gridX = powerup.gridX, gridY = powerup.gridY}
+      actualTarget = {
+        gridX = powerup.gridX,
+        gridY = powerup.gridY
+      }
     end
   end
 
