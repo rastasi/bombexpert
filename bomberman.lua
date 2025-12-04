@@ -6,9 +6,11 @@
 -- version: 0.1
 -- script:  lua
 
+-- luacheck: globals TIC btn btnp cls rect spr print exit
+-- luacheck: max line length 150
+
 -- constants
 local TILE_SIZE = 16
-local PLAYER_SIZE = 12
 local BOMB_TIMER = 90
 local EXPLOSION_TIMER = 30
 
