@@ -67,6 +67,7 @@ local POWERUP_SPAWN_CHANCE = 0.3
 
 local Input = {}
 local Map = {}
+local Powerup = {}
 local UI = {}
 local TopBar = {}
 local Splash = {}
@@ -137,7 +138,11 @@ local POWERUP_TYPES = {
   },
 }
 
-local function get_powerup_config(type_name)
+--------------------------------------------------------------------------------
+-- Powerup module
+--------------------------------------------------------------------------------
+
+function Powerup.get_config(type_name)
   for _, p in ipairs(POWERUP_TYPES) do
     if p.type == type_name then
       return p
@@ -146,7 +151,7 @@ local function get_powerup_config(type_name)
   return POWERUP_TYPES[1]
 end
 
-local function get_random_powerup_type()
+function Powerup.get_random_type()
   local total_weight = 0
   for _, p in ipairs(POWERUP_TYPES) do
     total_weight = total_weight + p.weight
@@ -160,6 +165,45 @@ local function get_random_powerup_type()
     end
   end
   return POWERUP_TYPES[1].type
+end
+
+function Powerup.init()
+  State.powerups = {}
+  for row = 1, MAP_HEIGHT do
+    for col = 1, MAP_WIDTH do
+      if State.map[row][col] == BREAKABLE_WALL and math.random() < POWERUP_SPAWN_CHANCE then
+        table.insert(State.powerups, {gridX = col, gridY = row, type = Powerup.get_random_type()})
+      end
+    end
+  end
+end
+
+function Powerup.draw_all()
+  for _, pw in ipairs(State.powerups) do
+    if State.map[pw.gridY][pw.gridX] == EMPTY then
+      local drawX = (pw.gridX - 1) * TILE_SIZE
+      local drawY = (pw.gridY - 1) * TILE_SIZE
+      local config = Powerup.get_config(pw.type)
+      rect(drawX + 5, drawY + 5, 10, 10, COLOR_SHADOW)
+      rect(drawX + 3, drawY + 3, 10, 10, config.color)
+      print(config.label, drawX + 5, drawY + 5, COLOR_BLACK)
+    end
+  end
+end
+
+function Powerup.check_pickup()
+  for _, player in ipairs(State.players) do
+    for i = #State.powerups, 1, -1 do
+      local pw = State.powerups[i]
+      if State.map[pw.gridY][pw.gridX] == EMPTY and
+         player.gridX == pw.gridX and player.gridY == pw.gridY then
+        local config = Powerup.get_config(pw.type)
+        config.apply(player)
+        table.remove(State.powerups, i)
+        sfx(1, nil, 8)
+      end
+    end
+  end
 end
 
 --------------------------------------------------------------------------------
@@ -241,21 +285,38 @@ function Map.can_move_to(gridX, gridY, player)
   return true
 end
 
-function Map.init_powerups()
-  State.powerups = {}
+function Map.reset()
   for row = 1, MAP_HEIGHT do
     for col = 1, MAP_WIDTH do
-      if State.map[row][col] == BREAKABLE_WALL and math.random() < POWERUP_SPAWN_CHANCE then
-        table.insert(State.powerups, {gridX = col, gridY = row, type = get_random_powerup_type()})
+      State.map[row][col] = State.initial_map[row][col]
+    end
+  end
+end
+
+function Map.draw_shadows()
+  for row = 1, MAP_HEIGHT do
+    for col = 1, MAP_WIDTH do
+      local tile = State.map[row][col]
+      if tile == SOLID_WALL or tile == BREAKABLE_WALL then
+        local drawX = (col - 1) * TILE_SIZE
+        local drawY = (row - 1) * TILE_SIZE
+        rect(drawX + 2, drawY + 2, TILE_SIZE, TILE_SIZE, COLOR_SHADOW)
       end
     end
   end
 end
 
-function Map.reset()
+function Map.draw_tiles()
   for row = 1, MAP_HEIGHT do
     for col = 1, MAP_WIDTH do
-      State.map[row][col] = State.initial_map[row][col]
+      local tile = State.map[row][col]
+      local drawX = (col - 1) * TILE_SIZE
+      local drawY = (row - 1) * TILE_SIZE
+      if tile == SOLID_WALL then
+        spr(SOLID_WALL_SPRITE, drawX, drawY, 0, 2)
+      elseif tile == BREAKABLE_WALL then
+        spr(BREAKABLE_WALL_SPRITE, drawX, drawY, 0, 2)
+      end
     end
   end
 end
@@ -372,62 +433,11 @@ end
 --------------------------------------------------------------------------------
 
 function GameBoard.draw()
-  -- draw wall shadows first
-  for row = 1, MAP_HEIGHT do
-    for col = 1, MAP_WIDTH do
-      local tile = State.map[row][col]
-      if tile == SOLID_WALL or tile == BREAKABLE_WALL then
-        local drawX = (col - 1) * TILE_SIZE
-        local drawY = (row - 1) * TILE_SIZE
-        rect(drawX + 2, drawY + 2, TILE_SIZE, TILE_SIZE, COLOR_SHADOW)
-      end
-    end
-  end
-
-  -- draw explosions (after shadows, before walls)
-  for _, expl in ipairs(State.explosions) do
-    if expl.spread <= 0 then
-      rect(expl.x, expl.y, TILE_SIZE, TILE_SIZE, COLOR_RED)
-    else
-      local progress = 1 - (expl.spread / (expl.dist * SPREAD_DELAY))
-      if progress > 0 then
-        local size = math.floor(TILE_SIZE * progress)
-        local offset = math.floor((TILE_SIZE - size) / 2)
-        rect(expl.x + offset, expl.y + offset, size, size, COLOR_RED)
-      end
-    end
-  end
-
-  -- draw map tiles
-  for row = 1, MAP_HEIGHT do
-    for col = 1, MAP_WIDTH do
-      local tile = State.map[row][col]
-      local drawX = (col - 1) * TILE_SIZE
-      local drawY = (row - 1) * TILE_SIZE
-      if tile == SOLID_WALL then
-        spr(SOLID_WALL_SPRITE, drawX, drawY, 0, 2)
-      elseif tile == BREAKABLE_WALL then
-        spr(BREAKABLE_WALL_SPRITE, drawX, drawY, 0, 2)
-      end
-    end
-  end
-
-  -- draw powerups
-  for _, pw in ipairs(State.powerups) do
-    if State.map[pw.gridY][pw.gridX] == EMPTY then
-      local drawX = (pw.gridX - 1) * TILE_SIZE
-      local drawY = (pw.gridY - 1) * TILE_SIZE
-      local config = get_powerup_config(pw.type)
-      rect(drawX + 5, drawY + 5, 10, 10, COLOR_SHADOW)
-      rect(drawX + 3, drawY + 3, 10, 10, config.color)
-      print(config.label, drawX + 5, drawY + 5, COLOR_BLACK)
-    end
-  end
-
-  -- draw bombs
-  for _, bomb in ipairs(State.bombs) do
-    Bomb.draw(bomb.x, bomb.y)
-  end
+  Map.draw_shadows()
+  Bomb.draw_explosions()
+  Map.draw_tiles()
+  Powerup.draw_all()
+  Bomb.draw_all()
 
   -- draw players
   for idx, player in ipairs(State.players) do
@@ -443,6 +453,27 @@ end
 
 function Bomb.draw(x, y)
   spr(BOMB_SPRITE, x, y, 0, 2)
+end
+
+function Bomb.draw_all()
+  for _, bomb in ipairs(State.bombs) do
+    Bomb.draw(bomb.x, bomb.y)
+  end
+end
+
+function Bomb.draw_explosions()
+  for _, expl in ipairs(State.explosions) do
+    if expl.spread <= 0 then
+      rect(expl.x, expl.y, TILE_SIZE, TILE_SIZE, COLOR_RED)
+    else
+      local progress = 1 - (expl.spread / (expl.dist * SPREAD_DELAY))
+      if progress > 0 then
+        local size = math.floor(TILE_SIZE * progress)
+        local offset = math.floor((TILE_SIZE - size) / 2)
+        rect(expl.x + offset, expl.y + offset, size, size, COLOR_RED)
+      end
+    end
+  end
 end
 
 function Bomb.place(player)
@@ -890,17 +921,17 @@ end
 --------------------------------------------------------------------------------
 
 function Game.init()
+  State.winner = nil
+  State.win_timer = 0
+  Bomb.clear_all()
+  Map.reset()
+
   State.players = {}
   table.insert(State.players, Player.create(2, 2, COLOR_BLUE, false))
   local p2_is_ai = not State.two_player_mode
   table.insert(State.players, Player.create(14, 8, COLOR_RED, p2_is_ai))
-  Map.init_powerups()
-end
 
-function Game.set_winner(player_num)
-  State.winner = player_num
-  State.win_timer = WIN_SCREEN_DURATION
-  State.score[player_num] = State.score[player_num] + 1
+  Powerup.init()
 end
 
 function Game.restart()
@@ -912,22 +943,14 @@ function Game.restart()
   for _, p in ipairs(State.players) do
     Player.reset(p)
   end
-  Map.init_powerups()
+
+  Powerup.init()
 end
 
-function Game.check_powerup_pickup()
-  for _, player in ipairs(State.players) do
-    for i = #State.powerups, 1, -1 do
-      local pw = State.powerups[i]
-      if State.map[pw.gridY][pw.gridX] == EMPTY and
-         player.gridX == pw.gridX and player.gridY == pw.gridY then
-        local config = get_powerup_config(pw.type)
-        config.apply(player)
-        table.remove(State.powerups, i)
-        sfx(1, nil, 8)
-      end
-    end
-  end
+function Game.set_winner(player_num)
+  State.winner = player_num
+  State.win_timer = WIN_SCREEN_DURATION
+  State.score[player_num] = State.score[player_num] + 1
 end
 
 function Game.check_death_by_explosion()
@@ -960,6 +983,30 @@ function Game.check_death_by_collision()
   return false
 end
 
+function Game.update()
+  -- Get human player as target for AI
+  local human_player = State.players[1]
+
+  -- update all players
+  for idx, player in ipairs(State.players) do
+    Player.update_movement(player)
+    if player.is_ai then
+      AI.update(player, human_player)
+    elseif idx == 1 then
+      Player.handle_input(player)
+    else
+      Player.handle_input_p2(player)
+    end
+  end
+
+  Bomb.update_all()
+  Powerup.check_pickup()
+
+  if Game.check_death_by_explosion() then return true end
+  if Game.check_death_by_collision() then return true end
+  return false
+end
+
 --------------------------------------------------------------------------------
 -- Main game loop
 --------------------------------------------------------------------------------
@@ -985,26 +1032,7 @@ function TIC()
     return
   end
 
-  -- Get human player as target for AI
-  local human_player = State.players[1]
-
-  -- update all players
-  for idx, player in ipairs(State.players) do
-    Player.update_movement(player)
-    if player.is_ai then
-      AI.update(player, human_player)
-    elseif idx == 1 then
-      Player.handle_input(player)
-    else
-      Player.handle_input_p2(player)
-    end
-  end
-
-  Bomb.update_all()
-  Game.check_powerup_pickup()
-
-  if Game.check_death_by_explosion() then return end
-  if Game.check_death_by_collision() then return end
+  if Game.update() then return end
 
   GameBoard.draw()
 end
