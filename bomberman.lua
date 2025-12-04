@@ -93,12 +93,34 @@ function Map.can_move_to(gridX, gridY)
   return true
 end
 
+-- powerup type definitions (extensible)
+local POWERUP_TYPES = {
+  {type = "bomb", weight = 50},   -- extra bomb
+  {type = "power", weight = 50},  -- explosion range +1
+}
+
+local function get_random_powerup_type()
+  local total_weight = 0
+  for _, p in ipairs(POWERUP_TYPES) do
+    total_weight = total_weight + p.weight
+  end
+  local roll = math.random() * total_weight
+  local cumulative = 0
+  for _, p in ipairs(POWERUP_TYPES) do
+    cumulative = cumulative + p.weight
+    if roll <= cumulative then
+      return p.type
+    end
+  end
+  return POWERUP_TYPES[1].type
+end
+
 function Map.init_powerups()
   powerups = {}
   for row = 1, 9 do
     for col = 1, 15 do
       if map[row][col] == BREAKABLE_WALL and math.random() < 0.3 then
-        table.insert(powerups, {gridX = col, gridY = row, type = "bomb"})
+        table.insert(powerups, {gridX = col, gridY = row, type = get_random_powerup_type()})
       end
     end
   end
@@ -171,8 +193,13 @@ function UI.draw_game()
       local drawX = (pw.gridX - 1) * TILE_SIZE
       local drawY = (pw.gridY - 1) * TILE_SIZE
       rect(drawX + 5, drawY + 5, 10, 10, 1)  -- shadow
-      rect(drawX + 3, drawY + 3, 10, 10, 4)  -- yellow background
-      print("B", drawX + 5, drawY + 5, 0)
+      if pw.type == "bomb" then
+        rect(drawX + 3, drawY + 3, 10, 10, 4)  -- yellow background
+        print("B", drawX + 5, drawY + 5, 0)
+      elseif pw.type == "power" then
+        rect(drawX + 3, drawY + 3, 10, 10, 3)  -- orange background
+        print("P", drawX + 5, drawY + 5, 0)
+      end
     end
   end
 
@@ -260,11 +287,12 @@ function Bomb.place(player)
     end
   end
 
-  table.insert(bombs, {x = bombX, y = bombY, timer = BOMB_TIMER, owner = player})
+  table.insert(bombs, {x = bombX, y = bombY, timer = BOMB_TIMER, owner = player, power = player.bombPower})
   player.activeBombs = player.activeBombs + 1
 end
 
-function Bomb.explode(bombX, bombY)
+function Bomb.explode(bombX, bombY, power)
+  power = power or 1
   sfx(0, nil, 30)  -- explosion sound, 30 ticks = 0.5 sec
   table.insert(explosions, {x = bombX, y = bombY, timer = EXPLOSION_TIMER})
 
@@ -273,31 +301,35 @@ function Bomb.explode(bombX, bombY)
 
   -- horizontal explosion
   for _, dir in ipairs({-1, 1}) do
-    local explX = bombX + dir * TILE_SIZE
-    local eGridX = gridX + dir
-    if eGridX >= 1 and eGridX <= 15 then
+    for dist = 1, power do
+      local explX = bombX + dir * dist * TILE_SIZE
+      local eGridX = gridX + dir * dist
+      if eGridX < 1 or eGridX > 15 then break end
       local tile = map[gridY][eGridX]
-      if tile == EMPTY then
-        table.insert(explosions, {x = explX, y = bombY, timer = EXPLOSION_TIMER})
-      elseif tile == BREAKABLE_WALL then
+      if tile == SOLID_WALL then break end
+      if tile == BREAKABLE_WALL then
         map[gridY][eGridX] = EMPTY
         table.insert(explosions, {x = explX, y = bombY, timer = EXPLOSION_TIMER})
+        break  -- stop at breakable wall
       end
+      table.insert(explosions, {x = explX, y = bombY, timer = EXPLOSION_TIMER})
     end
   end
 
   -- vertical explosion
   for _, dir in ipairs({-1, 1}) do
-    local explY = bombY + dir * TILE_SIZE
-    local eGridY = gridY + dir
-    if eGridY >= 1 and eGridY <= 9 then
+    for dist = 1, power do
+      local explY = bombY + dir * dist * TILE_SIZE
+      local eGridY = gridY + dir * dist
+      if eGridY < 1 or eGridY > 9 then break end
       local tile = map[eGridY][gridX]
-      if tile == EMPTY then
-        table.insert(explosions, {x = bombX, y = explY, timer = EXPLOSION_TIMER})
-      elseif tile == BREAKABLE_WALL then
+      if tile == SOLID_WALL then break end
+      if tile == BREAKABLE_WALL then
         map[eGridY][gridX] = EMPTY
         table.insert(explosions, {x = bombX, y = explY, timer = EXPLOSION_TIMER})
+        break  -- stop at breakable wall
       end
+      table.insert(explosions, {x = bombX, y = explY, timer = EXPLOSION_TIMER})
     end
   end
 end
@@ -547,6 +579,7 @@ function Player.create(gridX, gridY, color, is_ai)
     moving = false,
     maxBombs = 1,
     activeBombs = 0,
+    bombPower = 1,  -- explosion range
     color = color,
     is_ai = is_ai,
     moveTimer = 0,
@@ -615,6 +648,7 @@ function Player.reset(player)
   player.moving = false
   player.maxBombs = 1
   player.activeBombs = 0
+  player.bombPower = 1
   player.bombCooldown = 0
 end
 
@@ -694,7 +728,7 @@ function TIC()
     local bomb = bombs[i]
     bomb.timer = bomb.timer - 1
     if bomb.timer <= 0 then
-      Bomb.explode(bomb.x, bomb.y)
+      Bomb.explode(bomb.x, bomb.y, bomb.power)
       if bomb.owner then
         bomb.owner.activeBombs = bomb.owner.activeBombs - 1
       end
@@ -717,7 +751,12 @@ function TIC()
       local pw = powerups[i]
       if map[pw.gridY][pw.gridX] == EMPTY and
          player.gridX == pw.gridX and player.gridY == pw.gridY then
-        player.maxBombs = player.maxBombs + 1
+        -- apply powerup effect based on type
+        if pw.type == "bomb" then
+          player.maxBombs = player.maxBombs + 1
+        elseif pw.type == "power" then
+          player.bombPower = player.bombPower + 1
+        end
         table.remove(powerups, i)
         sfx(1, nil, 8)  -- short pickup beep
       end
