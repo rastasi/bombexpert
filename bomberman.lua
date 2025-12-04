@@ -14,9 +14,11 @@
 --------------------------------------------------------------------------------
 
 -- Tile constants
-local TILE_SIZE = 16
-local MAP_WIDTH = 15
-local MAP_HEIGHT = 9
+local TILE_SIZE = 8
+local MAP_WIDTH = 27
+local MAP_HEIGHT = 15
+local BOARD_OFFSET_X = 12  -- (240-27*8)/2 = 12
+local BOARD_OFFSET_Y = 14  -- top bar (10) + shadow (2) + gap (2)
 
 -- Tile types
 local EMPTY = 0
@@ -35,12 +37,13 @@ local AI_BOMB_COOLDOWN = 90
 -- Movement
 local MOVE_SPEED = 2
 
--- Sprite indices (in SPRITES section, starts at 256)
-local ASTRONAUT_BLUE = 256
-local ASTRONAUT_RED = 257
+-- Sprite indices (SPRITES section loads at 256+)
+local PLAYER_BLUE = 256
+local PLAYER_RED = 257
 local BOMB_SPRITE = 258
 local BREAKABLE_WALL_SPRITE = 259
 local SOLID_WALL_SPRITE = 260
+local FLOOR_SPRITE = 261
 
 -- Colors
 local COLOR_BLACK = 0
@@ -174,12 +177,12 @@ end
 function Powerup.draw_all()
   for _, pw in ipairs(State.powerups) do
     if State.map[pw.gridY][pw.gridX] == EMPTY then
-      local drawX = (pw.gridX - 1) * TILE_SIZE
-      local drawY = (pw.gridY - 1) * TILE_SIZE
+      local drawX = (pw.gridX - 1) * TILE_SIZE + BOARD_OFFSET_X
+      local drawY = (pw.gridY - 1) * TILE_SIZE + BOARD_OFFSET_Y
       local config = Powerup.get_config(pw.type)
-      rect(drawX + 5, drawY + 5, 10, 10, COLOR_SHADOW)
-      rect(drawX + 3, drawY + 3, 10, 10, config.color)
-      print(config.label, drawX + 5, drawY + 5, COLOR_BLACK)
+      rect(drawX + 2, drawY + 2, 5, 5, COLOR_SHADOW)
+      rect(drawX + 1, drawY + 1, 5, 5, config.color)
+      print(config.label, drawX + 2, drawY + 1, COLOR_BLACK)
     end
   end
 end
@@ -279,20 +282,22 @@ function Map.can_move_to(gridX, gridY, player)
 end
 
 function Map.is_spawn_area(row, col)
+  local lastCol = MAP_WIDTH - 1   -- 28
+  local lastRow = MAP_HEIGHT - 1  -- 16
   -- Top-left spawn (2,2) and adjacent
   if (row == 2 and col == 2) or (row == 2 and col == 3) or (row == 3 and col == 2) then
     return true
   end
-  -- Top-right spawn (14,2) and adjacent
-  if (row == 2 and col == 14) or (row == 2 and col == 13) or (row == 3 and col == 14) then
+  -- Top-right spawn and adjacent
+  if (row == 2 and col == lastCol) or (row == 2 and col == lastCol - 1) or (row == 3 and col == lastCol) then
     return true
   end
-  -- Bottom-left spawn (2,8) and adjacent
-  if (row == 8 and col == 2) or (row == 8 and col == 3) or (row == 7 and col == 2) then
+  -- Bottom-left spawn and adjacent
+  if (row == lastRow and col == 2) or (row == lastRow and col == 3) or (row == lastRow - 1 and col == 2) then
     return true
   end
-  -- Bottom-right spawn (14,8) and adjacent
-  if (row == 8 and col == 14) or (row == 8 and col == 13) or (row == 7 and col == 14) then
+  -- Bottom-right spawn and adjacent
+  if (row == lastRow and col == lastCol) or (row == lastRow and col == lastCol - 1) or (row == lastRow - 1 and col == lastCol) then
     return true
   end
   return false
@@ -304,12 +309,12 @@ function Map.generate()
       -- Border walls
       if row == 1 or row == MAP_HEIGHT or col == 1 or col == MAP_WIDTH then
         State.map[row][col] = SOLID_WALL
-      -- Grid pattern solid walls (odd row, odd col - like original)
-      elseif row % 2 == 1 and col % 2 == 1 then
-        State.map[row][col] = SOLID_WALL
       -- Spawn areas MUST be empty
       elseif Map.is_spawn_area(row, col) then
         State.map[row][col] = EMPTY
+      -- Grid pattern solid walls (odd row AND odd col, but not border)
+      elseif row % 2 == 1 and col % 2 == 1 and row > 1 and col > 1 then
+        State.map[row][col] = SOLID_WALL
       -- Random: breakable wall or empty
       else
         if math.random() < 0.7 then
@@ -327,9 +332,9 @@ function Map.draw_shadows()
     for col = 1, MAP_WIDTH do
       local tile = State.map[row][col]
       if tile == SOLID_WALL or tile == BREAKABLE_WALL then
-        local drawX = (col - 1) * TILE_SIZE
-        local drawY = (row - 1) * TILE_SIZE
-        rect(drawX + 2, drawY + 2, TILE_SIZE, TILE_SIZE, COLOR_SHADOW)
+        local drawX = (col - 1) * TILE_SIZE + BOARD_OFFSET_X
+        local drawY = (row - 1) * TILE_SIZE + BOARD_OFFSET_Y
+        rect(drawX + 1, drawY + 1, TILE_SIZE, TILE_SIZE, COLOR_SHADOW)
       end
     end
   end
@@ -339,13 +344,14 @@ function Map.draw_tiles()
   for row = 1, MAP_HEIGHT do
     for col = 1, MAP_WIDTH do
       local tile = State.map[row][col]
-      local drawX = (col - 1) * TILE_SIZE
-      local drawY = (row - 1) * TILE_SIZE
+      local drawX = (col - 1) * TILE_SIZE + BOARD_OFFSET_X
+      local drawY = (row - 1) * TILE_SIZE + BOARD_OFFSET_Y
       if tile == SOLID_WALL then
-        spr(SOLID_WALL_SPRITE, drawX, drawY, 0, 2)
+        spr(SOLID_WALL_SPRITE, drawX, drawY, 0, 1)
       elseif tile == BREAKABLE_WALL then
-        spr(BREAKABLE_WALL_SPRITE, drawX, drawY, 0, 2)
+        spr(BREAKABLE_WALL_SPRITE, drawX, drawY, 0, 1)
       end
+      -- Empty spaces use background color (no floor sprite)
     end
   end
 end
@@ -355,6 +361,11 @@ end
 --------------------------------------------------------------------------------
 
 function TopBar.draw()
+  -- Background
+  rect(0, 0, 240, 10, COLOR_SHADOW)
+  -- Shadow
+  rect(0, 10, 240, 2, COLOR_BLACK)
+
   local p1 = State.players[1]
   local p2 = State.players[2]
 
@@ -368,10 +379,10 @@ function TopBar.draw()
 
   -- Player 2 (right side) - red
   if p2 then
-    print("P:"..p2.bombPower, 168, 2, COLOR_ORANGE)
-    print("B:"..p2.maxBombs, 192, 2, COLOR_YELLOW)
-    print("W:"..State.score[2], 216, 2, COLOR_RED)
-    print("P2", 232, 2, COLOR_RED)
+    print("P:"..p2.bombPower, 156, 2, COLOR_ORANGE)
+    print("B:"..p2.maxBombs, 180, 2, COLOR_YELLOW)
+    print("W:"..State.score[2], 204, 2, COLOR_RED)
+    print("P2", 226, 2, COLOR_RED)
   end
 end
 
@@ -463,14 +474,14 @@ end
 
 function GameBoard.draw()
   Map.draw_shadows()
-  Bomb.draw_explosions()
   Map.draw_tiles()
+  Bomb.draw_explosions()
   Powerup.draw_all()
   Bomb.draw_all()
 
   -- draw players
   for idx, player in ipairs(State.players) do
-    Player.draw(player.pixelX, player.pixelY, idx == 1)
+    Player.draw(player.pixelX + BOARD_OFFSET_X, player.pixelY + BOARD_OFFSET_Y, idx == 1)
   end
 
   TopBar.draw()
@@ -481,25 +492,27 @@ end
 --------------------------------------------------------------------------------
 
 function Bomb.draw(x, y)
-  spr(BOMB_SPRITE, x, y, 0, 2)
+  spr(BOMB_SPRITE, x, y, 0, 1)
 end
 
 function Bomb.draw_all()
   for _, bomb in ipairs(State.bombs) do
-    Bomb.draw(bomb.x, bomb.y)
+    Bomb.draw(bomb.x + BOARD_OFFSET_X, bomb.y + BOARD_OFFSET_Y)
   end
 end
 
 function Bomb.draw_explosions()
   for _, expl in ipairs(State.explosions) do
+    local drawX = expl.x + BOARD_OFFSET_X
+    local drawY = expl.y + BOARD_OFFSET_Y
     if expl.spread <= 0 then
-      rect(expl.x, expl.y, TILE_SIZE, TILE_SIZE, COLOR_RED)
+      rect(drawX, drawY, TILE_SIZE, TILE_SIZE, COLOR_RED)
     else
       local progress = 1 - (expl.spread / (expl.dist * SPREAD_DELAY))
       if progress > 0 then
         local size = math.floor(TILE_SIZE * progress)
-        local offset = math.floor((TILE_SIZE - size) / 2)
-        rect(expl.x + offset, expl.y + offset, size, size, COLOR_RED)
+        local off = math.floor((TILE_SIZE - size) / 2)
+        rect(drawX + off, drawY + off, size, size, COLOR_RED)
       end
     end
   end
@@ -894,8 +907,8 @@ end
 --------------------------------------------------------------------------------
 
 function Player.draw(x, y, is_player1)
-  local sprite_id = is_player1 and ASTRONAUT_BLUE or ASTRONAUT_RED
-  spr(sprite_id, x, y, 0, 2)
+  local sprite_id = is_player1 and PLAYER_BLUE or PLAYER_RED
+  spr(sprite_id, x, y, 0, 1)
 end
 
 function Player.create(gridX, gridY, color, is_ai)
@@ -1019,7 +1032,7 @@ function Game.init()
   State.players = {}
   table.insert(State.players, Player.create(2, 2, COLOR_BLUE, false))
   local p2_is_ai = not State.two_player_mode
-  table.insert(State.players, Player.create(14, 8, COLOR_RED, p2_is_ai))
+  table.insert(State.players, Player.create(MAP_WIDTH - 1, MAP_HEIGHT - 1, COLOR_RED, p2_is_ai))
 
   Powerup.init()
 end
@@ -1145,6 +1158,7 @@ end
 -- 002:00043000001111000111111001111110011111100011110000011000000000000
 -- 003:ddd1ddddddd1dddd1111111ddddd1dddddddd1dd1111111ddd1ddddddd1ddddd
 -- 004:8888888888888888888888888888888888888888888888888888888888888888
+-- 005:6666666666566656666666665666566666666666665656666666666665666566
 -- </SPRITES>
 
 -- <PALETTE>
