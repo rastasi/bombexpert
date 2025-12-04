@@ -83,7 +83,7 @@ end
 init_powerups
 
 def TIC
-  cls(0)
+  cls(6)  # green background
 
   # if there's a winner, show message and wait for restart
   if $winner
@@ -167,9 +167,9 @@ def draw_game
       drawX = col * TILE_SIZE
       drawY = row * TILE_SIZE
       if tile == SOLID_WALL
-        rect(drawX, drawY, TILE_SIZE, TILE_SIZE, 8)
+        spr(SOLID_WALL_SPRITE, drawX, drawY, 0, 2)
       elsif tile == BREAKABLE_WALL
-        rect(drawX, drawY, TILE_SIZE, TILE_SIZE, 4)
+        spr(BREAKABLE_WALL_SPRITE, drawX, drawY, 0, 2)
       end
     end
   end
@@ -660,6 +660,8 @@ end
 ASTRONAUT_BLUE = 256   # sprite 0
 ASTRONAUT_RED = 257    # sprite 1
 BOMB_SPRITE = 258      # sprite 2
+BREAKABLE_WALL_SPRITE = 259  # sprite 3 - brick pattern
+SOLID_WALL_SPRITE = 260      # sprite 4 - solid gray
 
 def draw_player_sprite(x, y, is_player1)
   sprite_id = is_player1 ? ASTRONAUT_BLUE : ASTRONAUT_RED
@@ -756,6 +758,8 @@ end
 # 000:00cccc000c1cc1c00ccccccc00cccc000c0cc0c00c0cc0c00000000000000000
 # 001:00222200021221200222222200222200020220200202202000000000000000000
 # 002:00043000001111000111111001111110011111100011110000011000000000000
+# 003:ddd1ddddddd1dddd1111111ddddd1dddddddd1dd1111111ddd1ddddddd1ddddd
+# 004:8888888888888888888888888888888888888888888888888888888888888888
 # </SPRITES>
 
 # <PALETTE>
