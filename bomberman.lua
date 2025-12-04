@@ -6,7 +6,7 @@
 -- version: 0.2
 -- script:  lua
 
--- luacheck: globals TIC btn btnp cls rect spr print exit sfx keyp
+-- luacheck: globals TIC btn btnp cls rect spr print exit sfx keyp key
 -- luacheck: max line length 150
 
 --------------------------------------------------------------------------------
@@ -81,6 +81,7 @@ local State = {
   game_state = GAME_STATE_SPLASH,
   splash_timer = SPLASH_DURATION,
   menu_selection = 1,
+  two_player_mode = false,
   players = {},
   powerups = {},
   bombs = {},
@@ -186,6 +187,27 @@ end
 
 function Input.down_pressed()
   return btnp(1)
+end
+
+-- Player 2 inputs (WASD + G for bomb)
+function Input.p2_up()
+  return key(23) or btn(8)  -- W key or gamepad 2 up
+end
+
+function Input.p2_down()
+  return key(19) or btn(9)  -- S key or gamepad 2 down
+end
+
+function Input.p2_left()
+  return key(1) or btn(10)  -- A key or gamepad 2 left
+end
+
+function Input.p2_right()
+  return key(4) or btn(11)  -- D key or gamepad 2 right
+end
+
+function Input.p2_action()
+  return keyp(7) or btnp(12)  -- G key or gamepad 2 A
 end
 
 --------------------------------------------------------------------------------
@@ -315,7 +337,11 @@ function UI.draw_game()
 
   -- score display
   print(State.score[1]..":"..State.score[2], 5, 2, COLOR_BLUE)
-  print("ARROWS:MOVE SPACE:BOMB", 50, 2, COLOR_WHITE)
+  if State.two_player_mode then
+    print("P1:ARROWS+SPACE P2:WASD+G", 40, 2, COLOR_WHITE)
+  else
+    print("ARROWS:MOVE SPACE:BOMB", 50, 2, COLOR_WHITE)
+  end
   local human = State.players[1]
   if human then
     local available = human.maxBombs - human.activeBombs
@@ -341,24 +367,30 @@ function UI.update_menu()
   UI.print_shadow("Bomberman", 85, 30, COLOR_BLUE, false, 2)
   UI.print_shadow("Clone", 100, 50, COLOR_BLUE, false, 2)
 
-  local play_color = (State.menu_selection == 1) and COLOR_GREEN_LIGHT or COLOR_WHITE
-  local exit_color = (State.menu_selection == 2) and COLOR_GREEN_LIGHT or COLOR_WHITE
+  local p1_color = (State.menu_selection == 1) and COLOR_GREEN_LIGHT or COLOR_WHITE
+  local p2_color = (State.menu_selection == 2) and COLOR_GREEN_LIGHT or COLOR_WHITE
+  local exit_color = (State.menu_selection == 3) and COLOR_GREEN_LIGHT or COLOR_WHITE
 
-  if State.menu_selection == 1 then
-    UI.print_shadow(">", 85, 90, COLOR_GREEN_LIGHT)
-  else
-    UI.print_shadow(">", 85, 110, COLOR_GREEN_LIGHT)
-  end
+  local cursor_y = 80 + (State.menu_selection - 1) * 20
+  UI.print_shadow(">", 60, cursor_y, COLOR_GREEN_LIGHT)
 
-  UI.print_shadow("Play", 95, 90, play_color)
-  UI.print_shadow("Exit", 95, 110, exit_color)
+  UI.print_shadow("1 Player Game", 70, 80, p1_color)
+  UI.print_shadow("2 Player Game", 70, 100, p2_color)
+  UI.print_shadow("Exit", 70, 120, exit_color)
 
   if Input.up_pressed() then
-    State.menu_selection = 1
+    State.menu_selection = State.menu_selection - 1
+    if State.menu_selection < 1 then State.menu_selection = 3 end
   elseif Input.down_pressed() then
-    State.menu_selection = 2
+    State.menu_selection = State.menu_selection + 1
+    if State.menu_selection > 3 then State.menu_selection = 1 end
   elseif Input.action_pressed() then
     if State.menu_selection == 1 then
+      State.two_player_mode = false
+      State.game_state = GAME_STATE_PLAYING
+      Game.init()
+    elseif State.menu_selection == 2 then
+      State.two_player_mode = true
       State.game_state = GAME_STATE_PLAYING
       Game.init()
     else
@@ -768,6 +800,32 @@ function Player.handle_input(player)
   end
 end
 
+function Player.handle_input_p2(player)
+  if player.moving then return end
+
+  local newGridX = player.gridX
+  local newGridY = player.gridY
+
+  if Input.p2_up() then
+    newGridY = player.gridY - 1
+  elseif Input.p2_down() then
+    newGridY = player.gridY + 1
+  elseif Input.p2_left() then
+    newGridX = player.gridX - 1
+  elseif Input.p2_right() then
+    newGridX = player.gridX + 1
+  end
+
+  if Map.can_move_to(newGridX, newGridY) then
+    player.gridX = newGridX
+    player.gridY = newGridY
+  end
+
+  if Input.p2_action() then
+    Bomb.place(player)
+  end
+end
+
 function Player.reset(player)
   player.gridX = player.spawnX
   player.gridY = player.spawnY
@@ -787,7 +845,8 @@ end
 function Game.init()
   State.players = {}
   table.insert(State.players, Player.create(2, 2, COLOR_BLUE, false))
-  table.insert(State.players, Player.create(14, 8, COLOR_RED, true))
+  local p2_is_ai = not State.two_player_mode
+  table.insert(State.players, Player.create(14, 8, COLOR_RED, p2_is_ai))
   Map.init_powerups()
 end
 
@@ -883,12 +942,14 @@ function TIC()
   local human_player = State.players[1]
 
   -- update all players
-  for _, player in ipairs(State.players) do
+  for idx, player in ipairs(State.players) do
     Player.update_movement(player)
     if player.is_ai then
       AI.update(player, human_player)
-    else
+    elseif idx == 1 then
       Player.handle_input(player)
+    else
+      Player.handle_input_p2(player)
     end
   end
 
