@@ -32,6 +32,13 @@ local GAME_STATE_SPLASH = 0
 local GAME_STATE_MENU = 1
 local GAME_STATE_PLAYING = 2
 
+-- helper function for shadowed text
+local function print_shadow(text, x, y, color, fixed, scale)
+  scale = scale or 1
+  print(text, x + 1, y + 1, 1, fixed, scale)
+  print(text, x, y, color, fixed, scale)
+end
+
 -- game state variables
 local game_state = GAME_STATE_SPLASH
 local splash_timer = 90  -- 1.5 seconds at 60fps
@@ -480,9 +487,9 @@ local function draw_win_screen()
   cls(0)
   rect(20, 30, 200, 80, 12)
   rect(22, 32, 196, 76, 0)
-  print("PLAYER "..winner.." WON!", 70, 55, 12, false, 2)
+  print_shadow("PLAYER "..winner.." WON!", 70, 55, 12, false, 2)
   if win_timer <= 0 or math.floor(win_timer / 15) % 2 == 0 then
-    print("Press A to restart", 70, 80, 12)
+    print_shadow("Press A to restart", 70, 80, 12)
   end
 end
 
@@ -557,8 +564,8 @@ local function update_splash()
   cls(0)
 
   -- title with line break
-  print("Bomberman", 85, 50, 12, false, 2)
-  print("Clone", 100, 70, 12, false, 2)
+  print_shadow("Bomberman", 85, 50, 12, false, 2)
+  print_shadow("Clone", 100, 70, 12, false, 2)
 
   splash_timer = splash_timer - 1
   if splash_timer <= 0 then
@@ -570,8 +577,8 @@ local function update_menu()
   cls(0)
 
   -- title
-  print("Bomberman", 85, 30, 12, false, 2)
-  print("Clone", 100, 50, 12, false, 2)
+  print_shadow("Bomberman", 85, 30, 12, false, 2)
+  print_shadow("Clone", 100, 50, 12, false, 2)
 
   -- menu options
   local play_color = (menu_selection == 1) and 11 or 15
@@ -579,13 +586,14 @@ local function update_menu()
 
   -- selection indicator
   if menu_selection == 1 then
-    print(">", 85, 90, 11)
+    print_shadow(">", 85, 90, 11)
   else
-    print(">", 85, 110, 11)
+    print_shadow(">", 85, 110, 11)
   end
 
-  print("Play", 95, 90, play_color)
-  print("Exit", 95, 110, exit_color)
+  -- menu items
+  print_shadow("Play", 95, 90, play_color)
+  print_shadow("Exit", 95, 110, exit_color)
 
   -- handle input
   if btnp(0) then  -- up
