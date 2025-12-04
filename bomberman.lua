@@ -26,6 +26,14 @@ BREAKABLE_WALL_SPRITE = 259
 SOLID_WALL_SPRITE = 260
 
 -- game state
+GAME_STATE_SPLASH = 0
+GAME_STATE_MENU = 1
+GAME_STATE_PLAYING = 2
+
+game_state = GAME_STATE_SPLASH
+splash_timer = 90  -- 1.5 seconds at 60fps
+menu_selection = 1  -- 1 = Play, 2 = Exit
+
 players = {}
 powerups = {}
 bombs = {}
@@ -83,9 +91,16 @@ function init_powerups()
   end
 end
 
-init_game()
-
 function TIC()
+  if game_state == GAME_STATE_SPLASH then
+    update_splash()
+    return
+  elseif game_state == GAME_STATE_MENU then
+    update_menu()
+    return
+  end
+
+  -- GAME_STATE_PLAYING
   cls(6)  -- green background
 
   if winner then
@@ -212,6 +227,55 @@ function draw_game()
   local human = players[1]
   local available = human.maxBombs - human.activeBombs
   print("BOMBS:"..available.."/"..human.maxBombs, 180, 2, 11)
+end
+
+function update_splash()
+  cls(0)
+
+  -- title with line break
+  print("Bomberman", 85, 50, 12, false, 2)
+  print("Clone", 100, 70, 12, false, 2)
+
+  splash_timer = splash_timer - 1
+  if splash_timer <= 0 then
+    game_state = GAME_STATE_MENU
+  end
+end
+
+function update_menu()
+  cls(0)
+
+  -- title
+  print("Bomberman", 85, 30, 12, false, 2)
+  print("Clone", 100, 50, 12, false, 2)
+
+  -- menu options
+  local play_color = (menu_selection == 1) and 11 or 15
+  local exit_color = (menu_selection == 2) and 11 or 15
+
+  -- selection indicator
+  if menu_selection == 1 then
+    print(">", 85, 90, 11)
+  else
+    print(">", 85, 110, 11)
+  end
+
+  print("Play", 95, 90, play_color)
+  print("Exit", 95, 110, exit_color)
+
+  -- handle input
+  if btnp(0) then  -- up
+    menu_selection = 1
+  elseif btnp(1) then  -- down
+    menu_selection = 2
+  elseif btnp(4) then  -- A button (select)
+    if menu_selection == 1 then
+      game_state = GAME_STATE_PLAYING
+      init_game()
+    else
+      exit()
+    end
+  end
 end
 
 function set_winner(player_num)
