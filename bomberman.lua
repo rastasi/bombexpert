@@ -70,6 +70,7 @@ local GAME_STATE_MENU = 1
 local GAME_STATE_PLAYING = 2
 local GAME_STATE_HELP = 3
 local GAME_STATE_CREDITS = 4
+local GAME_STATE_CONFIG = 5
 
 --------------------------------------------------------------------------------
 -- Game Configuration (easy to tweak game parameters)
@@ -103,6 +104,7 @@ local Config = {
     height = 15,
     breakable_wall_chance = 0.7,
     powerup_spawn_chance = 0.3,
+    generator = "classic",
   },
 
   -- Timing
@@ -146,6 +148,7 @@ local Splash = {}
 local Menu = {}
 local Help = {}
 local Credits = {}
+local ConfigMenu = {}
 local WinScreen = {}
 local GameBoard = {}
 local Bomb = {}
@@ -161,6 +164,7 @@ local State = {
   game_state = GAME_STATE_SPLASH,
   splash_timer = SPLASH_DURATION,
   menu_selection = 1,
+  config_selection = 1,
   two_player_mode = false,
   players = {},
   powerups = {},
@@ -307,6 +311,14 @@ end
 
 function Input.down_pressed()
   return btnp(1)
+end
+
+function Input.left_pressed()
+  return btnp(2)
+end
+
+function Input.right_pressed()
+  return btnp(3)
 end
 
 -- Player 2 inputs (WASD + G for bomb)
@@ -545,7 +557,15 @@ end
 -- Splash module
 --------------------------------------------------------------------------------
 
+local config_loaded = false
+
 function Splash.update()
+  -- Load saved config on first frame
+  if not config_loaded then
+    ConfigMenu.load()
+    config_loaded = true
+  end
+
   cls(COLOR_BLACK)
 
   UI.print_shadow("Bomberman", 85, 50, COLOR_BLUE, false, 2)
@@ -564,6 +584,7 @@ end
 local MENU_ITEMS = {
   {label = "1 Player Game", action = function() State.two_player_mode = false; State.game_state = GAME_STATE_PLAYING; Game.init() end},
   {label = "2 Player Game", action = function() State.two_player_mode = true; State.game_state = GAME_STATE_PLAYING; Game.init() end},
+  {label = "Settings", action = function() State.game_state = GAME_STATE_CONFIG end},
   {label = "Help", action = function() State.game_state = GAME_STATE_HELP end},
   {label = "Credits", action = function() State.game_state = GAME_STATE_CREDITS end},
   {label = "Exit", action = exit},
@@ -665,6 +686,173 @@ function Credits.update()
   UI.print_shadow("SPACE / Backspace: return", 50, 122, COLOR_CYAN)
 
   if Input.action_pressed() or Input.back_pressed() then
+    State.game_state = GAME_STATE_MENU
+  end
+end
+
+--------------------------------------------------------------------------------
+-- ConfigMenu module (persistent settings)
+--------------------------------------------------------------------------------
+
+-- luacheck: globals pmem
+
+-- Settings definition: each setting maps to a pmem slot
+-- pmem stores integers, so we use multipliers for decimals
+local CONFIG_ITEMS = {
+  {label = "Start Bombs", path = {"player", "start_bombs"}, min = 1, max = 5, step = 1, pmem_slot = 0},
+  {label = "Start Power", path = {"player", "start_power"}, min = 1, max = 5, step = 1, pmem_slot = 1},
+  {label = "Move Speed", path = {"player", "move_speed"}, min = 1, max = 4, step = 1, pmem_slot = 2},
+  {label = "Bomb Timer", path = {"bomb", "timer"}, min = 60, max = 180, step = 15, pmem_slot = 3},
+  {label = "AI Speed", path = {"ai", "move_delay"}, min = 10, max = 40, step = 5, pmem_slot = 4},
+  {label = "Wall Density", path = {"map", "breakable_wall_chance"}, min = 30, max = 90, step = 10, pmem_slot = 5, multiplier = 100},
+  {label = "Powerup Chance", path = {"map", "powerup_spawn_chance"}, min = 10, max = 50, step = 5, pmem_slot = 6, multiplier = 100},
+  {label = "Map Style", path = {"map", "generator"}, min = 1, max = 4, step = 1, pmem_slot = 7, is_enum = true,
+   enum_values = {"classic", "arena", "maze", "corridors"}},
+}
+
+-- Magic number to detect if pmem has been initialized
+local PMEM_INIT_SLOT = 255
+local PMEM_INIT_VALUE = 12345
+
+local function get_config_value(item)
+  local value = Config
+  for _, key in ipairs(item.path) do
+    value = value[key]
+  end
+  if item.multiplier then
+    return math.floor(value * item.multiplier + 0.5)
+  end
+  if item.is_enum then
+    for i, v in ipairs(item.enum_values) do
+      if v == value then return i end
+    end
+    return 1
+  end
+  return value
+end
+
+local function set_config_value(item, value)
+  local target = Config
+  for i = 1, #item.path - 1 do
+    target = target[item.path[i]]
+  end
+  local final_key = item.path[#item.path]
+  if item.multiplier then
+    target[final_key] = value / item.multiplier
+  elseif item.is_enum then
+    target[final_key] = item.enum_values[value]
+  else
+    target[final_key] = value
+  end
+end
+
+local function get_display_value(item, value)
+  if item.is_enum then
+    return item.enum_values[value] or "?"
+  end
+  if item.multiplier then
+    return value .. "%"
+  end
+  return tostring(value)
+end
+
+function ConfigMenu.load()
+  -- Check if pmem has been initialized
+  if pmem(PMEM_INIT_SLOT) ~= PMEM_INIT_VALUE then
+    -- First run - save defaults
+    ConfigMenu.save()
+    pmem(PMEM_INIT_SLOT, PMEM_INIT_VALUE)
+    return
+  end
+
+  -- Load values from pmem
+  for _, item in ipairs(CONFIG_ITEMS) do
+    local stored = pmem(item.pmem_slot)
+    if stored >= item.min and stored <= item.max then
+      set_config_value(item, stored)
+    end
+  end
+
+  -- Apply map generator setting
+  if Config.map.generator then
+    Map.current_generator = Config.map.generator
+  end
+end
+
+function ConfigMenu.save()
+  for _, item in ipairs(CONFIG_ITEMS) do
+    local value = get_config_value(item)
+    pmem(item.pmem_slot, value)
+  end
+end
+
+function ConfigMenu.update()
+  cls(COLOR_BLACK)
+
+  UI.print_shadow("Settings", 85, 4, COLOR_BLUE, false, 2)
+
+  local start_y = 22
+  local item_height = 11
+
+  for i, item in ipairs(CONFIG_ITEMS) do
+    local y = start_y + (i - 1) * item_height
+    local is_selected = (State.config_selection == i)
+    local color = is_selected and COLOR_CYAN or COLOR_GRAY_LIGHT
+
+    -- Cursor
+    if is_selected then
+      print("<", 16, y, COLOR_CYAN)
+      print(">", 221, y, COLOR_CYAN)
+    end
+
+    -- Label
+    print(item.label, 26, y, color)
+
+    -- Value
+    local value = get_config_value(item)
+    local display = get_display_value(item, value)
+    print(display, 161, y, COLOR_YELLOW)
+  end
+
+  -- Back option
+  local back_y = start_y + #CONFIG_ITEMS * item_height + 4
+  local back_selected = (State.config_selection == #CONFIG_ITEMS + 1)
+  if back_selected then
+    print(">", 71, back_y, COLOR_CYAN)
+  end
+  print("Save & Back", 81, back_y, back_selected and COLOR_CYAN or COLOR_GRAY_LIGHT)
+
+  -- Instructions at bottom
+  print("UP/DOWN:select LEFT/RIGHT:change", 28, 128, COLOR_GRAY_LIGHT)
+
+  -- Input handling
+  local max_selection = #CONFIG_ITEMS + 1
+
+  if Input.up_pressed() then
+    State.config_selection = State.config_selection - 1
+    if State.config_selection < 1 then State.config_selection = max_selection end
+  elseif Input.down_pressed() then
+    State.config_selection = State.config_selection + 1
+    if State.config_selection > max_selection then State.config_selection = 1 end
+  elseif Input.left_pressed() and State.config_selection <= #CONFIG_ITEMS then
+    local item = CONFIG_ITEMS[State.config_selection]
+    local value = get_config_value(item)
+    value = value - item.step
+    if value < item.min then value = item.max end
+    set_config_value(item, value)
+  elseif Input.right_pressed() and State.config_selection <= #CONFIG_ITEMS then
+    local item = CONFIG_ITEMS[State.config_selection]
+    local value = get_config_value(item)
+    value = value + item.step
+    if value > item.max then value = item.min end
+    set_config_value(item, value)
+  elseif Input.action_pressed() or Input.back_pressed() then
+    -- Apply map generator
+    if Config.map.generator then
+      Map.current_generator = Config.map.generator
+    end
+    ConfigMenu.save()
+    State.config_selection = 1
     State.game_state = GAME_STATE_MENU
   end
 end
@@ -1333,6 +1521,7 @@ local STATE_HANDLERS = {
   [GAME_STATE_MENU] = Menu.update,
   [GAME_STATE_HELP] = Help.update,
   [GAME_STATE_CREDITS] = Credits.update,
+  [GAME_STATE_CONFIG] = ConfigMenu.update,
   [GAME_STATE_PLAYING] = update_playing,
 }
 
