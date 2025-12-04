@@ -22,8 +22,13 @@ $player = {
   gridY: 1,
   pixelX: 16,
   pixelY: 16,
-  moving: false
+  moving: false,
+  maxBombs: 1,
+  activeBombs: 0
 }
+
+# powerups (extra bombs hidden under breakable walls)
+$powerups = []
 
 # game objects
 $bombs = []
@@ -55,17 +60,36 @@ $map = [
   [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
 ]
 
+def init_powerups
+  $powerups = []
+  # find all breakable walls and randomly place powerups under some
+  (0..8).each do |row|
+    (0..14).each do |col|
+      if $map[row][col] == BREAKABLE_WALL && rand < 0.3
+        $powerups << { gridX: col, gridY: row, type: :bomb }
+      end
+    end
+  end
+end
+
+init_powerups
+
 def TIC
   cls(0)
 
   # handle player movement
   update_player
 
-  # place bomb
-  if btnp(4)
+  # place bomb (only if we have available bombs)
+  if btnp(4) && $player[:activeBombs] < $player[:maxBombs]
     bombX = $player[:gridX] * TILE_SIZE
     bombY = $player[:gridY] * TILE_SIZE
-    $bombs << { x: bombX, y: bombY, timer: BOMB_TIMER }
+    # check if there's already a bomb at this position
+    already_bomb = $bombs.any? { |b| b[:x] == bombX && b[:y] == bombY }
+    unless already_bomb
+      $bombs << { x: bombX, y: bombY, timer: BOMB_TIMER }
+      $player[:activeBombs] += 1
+    end
   end
 
   # update bombs
@@ -74,6 +98,7 @@ def TIC
     if bomb[:timer] <= 0
       explode(bomb[:x], bomb[:y])
       $bombs.delete(bomb)
+      $player[:activeBombs] -= 1
     end
   end
 
@@ -94,6 +119,26 @@ def TIC
       elsif tile == BREAKABLE_WALL
         rect(drawX, drawY, TILE_SIZE, TILE_SIZE, 4)
       end
+    end
+  end
+
+  # draw powerups (only visible when wall is destroyed)
+  $powerups.each do |pw|
+    if $map[pw[:gridY]][pw[:gridX]] == EMPTY
+      drawX = pw[:gridX] * TILE_SIZE
+      drawY = pw[:gridY] * TILE_SIZE
+      # draw bomb powerup as small circle with B
+      rect(drawX + 3, drawY + 3, 10, 10, 6)
+      print("B", drawX + 5, drawY + 5, 0)
+    end
+  end
+
+  # check powerup pickup
+  $powerups.reverse_each do |pw|
+    if $map[pw[:gridY]][pw[:gridX]] == EMPTY &&
+       $player[:gridX] == pw[:gridX] && $player[:gridY] == pw[:gridY]
+      $player[:maxBombs] += 1
+      $powerups.delete(pw)
     end
   end
 
@@ -140,6 +185,8 @@ def TIC
   end
 
   print("ARROWS:MOVE A:BOMB", 50, 2, 15)
+  available = $player[:maxBombs] - $player[:activeBombs]
+  print("BOMBS:#{available}/#{$player[:maxBombs]}", 170, 2, 11)
 end
 
 def update_player
@@ -239,6 +286,8 @@ def reset_player
   $player[:pixelX] = 16
   $player[:pixelY] = 16
   $player[:moving] = false
+  $player[:maxBombs] = 1
+  $player[:activeBombs] = 0
 end
 
 def reset_enemy
