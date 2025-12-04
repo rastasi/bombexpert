@@ -43,7 +43,6 @@ local PLAYER_RED = 257
 local BOMB_SPRITE = 258
 local BREAKABLE_WALL_SPRITE = 259
 local SOLID_WALL_SPRITE = 260
-local FLOOR_SPRITE = 261
 
 -- Colors
 local COLOR_BLACK = 0
@@ -651,6 +650,7 @@ end
 --------------------------------------------------------------------------------
 
 function AI.is_dangerous(gridX, gridY)
+  -- Check active explosions
   for _, expl in ipairs(State.explosions) do
     local explGridX = math.floor(expl.x / TILE_SIZE) + 1
     local explGridY = math.floor(expl.y / TILE_SIZE) + 1
@@ -659,31 +659,48 @@ function AI.is_dangerous(gridX, gridY)
     end
   end
 
+  -- Check bombs about to explode (timer < 30) - need to escape!
   for _, bomb in ipairs(State.bombs) do
     local bombGridX = math.floor(bomb.x / TILE_SIZE) + 1
     local bombGridY = math.floor(bomb.y / TILE_SIZE) + 1
+    local power = bomb.power or 1
 
-    if gridX == bombGridX and gridY == bombGridY then
-      return true
-    end
-
-    if gridY == bombGridY then
-      if math.abs(gridX - bombGridX) <= 1 then
-        if gridX < bombGridX then
-          if State.map[gridY][gridX + 1] ~= SOLID_WALL then return true end
-        elseif gridX > bombGridX then
-          if State.map[gridY][gridX - 1] ~= SOLID_WALL then return true end
-        end
+    -- Only urgent if bomb is about to explode
+    if bomb.timer < 30 then
+      if gridX == bombGridX and gridY == bombGridY then
+        return true
       end
-    end
 
-    if gridX == bombGridX then
-      if math.abs(gridY - bombGridY) <= 1 then
-        if gridY < bombGridY then
-          if State.map[gridY + 1][gridX] ~= SOLID_WALL then return true end
-        elseif gridY > bombGridY then
-          if State.map[gridY - 1][gridX] ~= SOLID_WALL then return true end
+      -- Check blast radius only for soon-to-explode bombs
+      if gridY == bombGridY and math.abs(gridX - bombGridX) <= power then
+        local blocked = false
+        local minX = math.min(gridX, bombGridX)
+        local maxX = math.max(gridX, bombGridX)
+        for x = minX + 1, maxX - 1 do
+          if State.map[gridY][x] == SOLID_WALL then
+            blocked = true
+            break
+          end
         end
+        if not blocked then return true end
+      end
+
+      if gridX == bombGridX and math.abs(gridY - bombGridY) <= power then
+        local blocked = false
+        local minY = math.min(gridY, bombGridY)
+        local maxY = math.max(gridY, bombGridY)
+        for y = minY + 1, maxY - 1 do
+          if State.map[y][gridX] == SOLID_WALL then
+            blocked = true
+            break
+          end
+        end
+        if not blocked then return true end
+      end
+    else
+      -- For bombs with more time, just avoid the bomb cell itself
+      if gridX == bombGridX and gridY == bombGridY then
+        return true
       end
     end
   end
@@ -734,32 +751,35 @@ function AI.has_adjacent_breakable_wall(gridX, gridY)
   return false
 end
 
-function AI.has_escape_route(gridX, gridY, player)
-  local dirs = {
-    {0, -1},
-    {0, 1},
-    {-1, 0},
-    {1, 0}
-  }
-  for _, dir in ipairs(dirs) do
-    local newX = gridX + dir[1]
-    local newY = gridY + dir[2]
-    if Map.can_move_to(newX, newY, player) and not AI.is_dangerous(newX, newY) then
-      for _, dir2 in ipairs(dirs) do
-        local safeX = newX + dir2[1]
-        local safeY = newY + dir2[2]
-        if Map.can_move_to(safeX, safeY, player) then
-          return true
-        end
+function AI.find_nearest_powerup(gridX, gridY)
+  local nearest = nil
+  local nearestDist = 9999
+  for _, pw in ipairs(State.powerups) do
+    if State.map[pw.gridY][pw.gridX] == EMPTY then
+      local dist = math.abs(pw.gridX - gridX) + math.abs(pw.gridY - gridY)
+      if dist < nearestDist then
+        nearestDist = dist
+        nearest = pw
       end
     end
+  end
+  return nearest
+end
+
+function AI.is_in_blast_line(cellX, cellY, bombX, bombY, power)
+  -- Check if cell is in same row or column as bomb and within power range
+  if cellY == bombY and math.abs(cellX - bombX) <= power then
+    return true
+  end
+  if cellX == bombX and math.abs(cellY - bombY) <= power then
+    return true
   end
   return false
 end
 
-function AI.escape_from_bomb(player)
-  local bombGridX = player.gridX
-  local bombGridY = player.gridY
+function AI.find_safe_cell(gridX, gridY, player)
+  -- Find a cell to escape to that's OUTSIDE the bomb's blast line
+  local power = player.bombPower
   local dirs = {
     {0, -1},
     {0, 1},
@@ -767,61 +787,72 @@ function AI.escape_from_bomb(player)
     {1, 0}
   }
 
-  local best_dir = nil
-  local best_score = -999
-
+  -- First try: find a path that gets us completely out of blast line
   for _, dir in ipairs(dirs) do
-    local newX = player.gridX + dir[1]
-    local newY = player.gridY + dir[2]
-
-    if Map.can_move_to(newX, newY, player) then
-      local sc = 0
-
-      if not AI.in_blast_zone(newX, newY, bombGridX, bombGridY) then
-        sc = sc + 100
+    local newX = gridX + dir[1]
+    local newY = gridY + dir[2]
+    if Map.can_move_to(newX, newY, player) and not AI.is_dangerous(newX, newY) then
+      -- Check if this first step gets us out of blast line
+      if not AI.is_in_blast_line(newX, newY, gridX, gridY, power) then
+        return {newX, newY}
       end
-
+      -- If not, check if we can turn corner to get out
       for _, dir2 in ipairs(dirs) do
-        local checkX = newX + dir2[1]
-        local checkY = newY + dir2[2]
-        if not (checkX == bombGridX and checkY == bombGridY) then
-          if Map.can_move_to(checkX, checkY, player) then
-            sc = sc + 10
-            if not AI.in_blast_zone(checkX, checkY, bombGridX, bombGridY) then
-              sc = sc + 20
-            end
+        local safeX = newX + dir2[1]
+        local safeY = newY + dir2[2]
+        if Map.can_move_to(safeX, safeY, player) and not AI.is_dangerous(safeX, safeY) then
+          if not AI.is_in_blast_line(safeX, safeY, gridX, gridY, power) then
+            return {newX, newY}
           end
         end
       end
-
-      if sc > best_score then
-        best_score = sc
-        best_dir = dir
-      end
     end
   end
+  return nil
+end
 
-  if best_dir then
-    player.gridX = player.gridX + best_dir[1]
-    player.gridY = player.gridY + best_dir[2]
+function AI.has_escape_route(gridX, gridY, player)
+  return AI.find_safe_cell(gridX, gridY, player) ~= nil
+end
+
+function AI.escape_from_bomb(player)
+  local safe = AI.find_safe_cell(player.gridX, player.gridY, player)
+  if safe then
+    player.gridX = safe[1]
+    player.gridY = safe[2]
   end
 end
 
 function AI.move_and_bomb(player, target)
   if not target then return end
 
-  local dx = target.gridX - player.gridX
-  local dy = target.gridY - player.gridY
+  -- Check for nearby powerup first
+  local powerup = AI.find_nearest_powerup(player.gridX, player.gridY)
+  local actualTarget = target
+
+  -- If powerup is closer than target, go for powerup
+  if powerup then
+    local pwDist = math.abs(powerup.gridX - player.gridX) + math.abs(powerup.gridY - player.gridY)
+    local targetDist = math.abs(target.gridX - player.gridX) + math.abs(target.gridY - player.gridY)
+    if pwDist < targetDist or pwDist <= 5 then
+      actualTarget = {gridX = powerup.gridX, gridY = powerup.gridY}
+    end
+  end
+
+  local dx = actualTarget.gridX - player.gridX
+  local dy = actualTarget.gridY - player.gridY
   local dist = math.abs(dx) + math.abs(dy)
 
   local should_bomb = false
-  if dist <= 2 then should_bomb = true end
+  if dist <= 2 and actualTarget == target then should_bomb = true end
   if AI.has_adjacent_breakable_wall(player.gridX, player.gridY) then
     should_bomb = true
   end
 
   if should_bomb and player.activeBombs < player.maxBombs and player.bombCooldown <= 0 then
     if AI.has_escape_route(player.gridX, player.gridY, player) then
+      player.lastGridX = player.gridX
+      player.lastGridY = player.gridY
       Bomb.place(player)
       player.bombCooldown = AI_BOMB_COOLDOWN
       AI.escape_from_bomb(player)
@@ -829,6 +860,7 @@ function AI.move_and_bomb(player, target)
     end
   end
 
+  -- Build direction list
   local dirs = {}
   if dx > 0 then table.insert(dirs, {1, 0})
   elseif dx < 0 then table.insert(dirs, {-1, 0})
@@ -847,19 +879,49 @@ function AI.move_and_bomb(player, target)
     table.insert(dirs, d)
   end
 
+  -- Try to move, avoiding going back to last position unless necessary
+  local fallback = nil
   for _, dir in ipairs(dirs) do
     local newGridX = player.gridX + dir[1]
     local newGridY = player.gridY + dir[2]
     if Map.can_move_to(newGridX, newGridY, player) and not AI.is_dangerous(newGridX, newGridY) then
-      player.gridX = newGridX
-      player.gridY = newGridY
-      return
+      -- Avoid going back unless it's the only option
+      if newGridX == player.lastGridX and newGridY == player.lastGridY then
+        if not fallback then fallback = {newGridX, newGridY} end
+      else
+        player.lastGridX = player.gridX
+        player.lastGridY = player.gridY
+        player.gridX = newGridX
+        player.gridY = newGridY
+        return
+      end
     end
+  end
+
+  -- Use fallback if no other option
+  if fallback then
+    player.lastGridX = player.gridX
+    player.lastGridY = player.gridY
+    player.gridX = fallback[1]
+    player.gridY = fallback[2]
   end
 end
 
 function AI.update(player, target)
-  if player.moving then return end
+  -- Even while moving, check if destination becomes dangerous
+  if player.moving then
+    if AI.is_dangerous(player.gridX, player.gridY) then
+      -- Destination is dangerous! Try to stop or reverse
+      local currentGridX = math.floor(player.pixelX / TILE_SIZE) + 1
+      local currentGridY = math.floor(player.pixelY / TILE_SIZE) + 1
+      if not AI.is_dangerous(currentGridX, currentGridY) then
+        -- Stay at current position
+        player.gridX = currentGridX
+        player.gridY = currentGridY
+      end
+    end
+    return
+  end
 
   local in_danger = AI.is_dangerous(player.gridX, player.gridY)
 
@@ -915,6 +977,8 @@ function Player.create(gridX, gridY, color, is_ai)
   return {
     gridX = gridX,
     gridY = gridY,
+    lastGridX = gridX,
+    lastGridY = gridY,
     pixelX = (gridX - 1) * TILE_SIZE,
     pixelY = (gridY - 1) * TILE_SIZE,
     moving = false,
@@ -1158,7 +1222,6 @@ end
 -- 002:00043000001111000111111001111110011111100011110000011000000000000
 -- 003:ddd1ddddddd1dddd1111111ddddd1dddddddd1dd1111111ddd1ddddddd1ddddd
 -- 004:8888888888888888888888888888888888888888888888888888888888888888
--- 005:6666666666566656666666665666566666666666665656666666666665666566
 -- </SPRITES>
 
 -- <PALETTE>
