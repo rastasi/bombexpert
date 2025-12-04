@@ -95,25 +95,14 @@ local State = {
   winner = nil,
   win_timer = 0,
   score = {0, 0},
-  map = {},
-  initial_map = {
-    {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1},
-    {1,0,0,2,2,2,0,2,0,2,2,2,0,0,1},
-    {1,0,1,2,1,2,1,2,1,2,1,2,1,0,1},
-    {1,2,2,2,0,2,2,0,2,2,0,2,2,2,1},
-    {1,2,1,0,1,0,1,0,1,0,1,0,1,2,1},
-    {1,2,2,2,0,2,2,0,2,2,0,2,2,2,1},
-    {1,0,1,2,1,2,1,2,1,2,1,2,1,0,1},
-    {1,0,0,2,2,2,0,2,0,2,2,2,0,0,1},
-    {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1}
-  }
+  map = {}
 }
 
--- Copy initial map to working map
+-- Initialize empty map
 for row = 1, MAP_HEIGHT do
   State.map[row] = {}
   for col = 1, MAP_WIDTH do
-    State.map[row][col] = State.initial_map[row][col]
+    State.map[row][col] = EMPTY
   end
 end
 
@@ -289,10 +278,46 @@ function Map.can_move_to(gridX, gridY, player)
   return true
 end
 
-function Map.reset()
+function Map.is_spawn_area(row, col)
+  -- Top-left spawn (2,2) and adjacent
+  if (row == 2 and col == 2) or (row == 2 and col == 3) or (row == 3 and col == 2) then
+    return true
+  end
+  -- Top-right spawn (14,2) and adjacent
+  if (row == 2 and col == 14) or (row == 2 and col == 13) or (row == 3 and col == 14) then
+    return true
+  end
+  -- Bottom-left spawn (2,8) and adjacent
+  if (row == 8 and col == 2) or (row == 8 and col == 3) or (row == 7 and col == 2) then
+    return true
+  end
+  -- Bottom-right spawn (14,8) and adjacent
+  if (row == 8 and col == 14) or (row == 8 and col == 13) or (row == 7 and col == 14) then
+    return true
+  end
+  return false
+end
+
+function Map.generate()
   for row = 1, MAP_HEIGHT do
     for col = 1, MAP_WIDTH do
-      State.map[row][col] = State.initial_map[row][col]
+      -- Border walls
+      if row == 1 or row == MAP_HEIGHT or col == 1 or col == MAP_WIDTH then
+        State.map[row][col] = SOLID_WALL
+      -- Grid pattern solid walls (odd row, odd col - like original)
+      elseif row % 2 == 1 and col % 2 == 1 then
+        State.map[row][col] = SOLID_WALL
+      -- Spawn areas MUST be empty
+      elseif Map.is_spawn_area(row, col) then
+        State.map[row][col] = EMPTY
+      -- Random: breakable wall or empty
+      else
+        if math.random() < 0.7 then
+          State.map[row][col] = BREAKABLE_WALL
+        else
+          State.map[row][col] = EMPTY
+        end
+      end
     end
   end
 end
@@ -989,7 +1014,7 @@ function Game.init()
   State.winner = nil
   State.win_timer = 0
   Bomb.clear_all()
-  Map.reset()
+  Map.generate()
 
   State.players = {}
   table.insert(State.players, Player.create(2, 2, COLOR_BLUE, false))
@@ -1003,7 +1028,7 @@ function Game.restart()
   State.winner = nil
   State.win_timer = 0
   Bomb.clear_all()
-  Map.reset()
+  Map.generate()
 
   for _, p in ipairs(State.players) do
     Player.reset(p)
