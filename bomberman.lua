@@ -68,6 +68,7 @@ local POWERUP_SPAWN_CHANCE = 0.3
 local Input = {}
 local Map = {}
 local UI = {}
+local TopBar = {}
 local Bomb = {}
 local AI = {}
 local Player = {}
@@ -256,6 +257,31 @@ function Map.reset()
 end
 
 --------------------------------------------------------------------------------
+-- TopBar module
+--------------------------------------------------------------------------------
+
+function TopBar.draw()
+  local p1 = State.players[1]
+  local p2 = State.players[2]
+
+  -- Player 1 (left side) - blue
+  if p1 then
+    print("P1", 2, 2, COLOR_BLUE)
+    print("W:"..State.score[1], 16, 2, COLOR_BLUE)
+    print("B:"..p1.maxBombs, 40, 2, COLOR_YELLOW)
+    print("P:"..p1.bombPower, 64, 2, COLOR_ORANGE)
+  end
+
+  -- Player 2 (right side) - red
+  if p2 then
+    print("P:"..p2.bombPower, 168, 2, COLOR_ORANGE)
+    print("B:"..p2.maxBombs, 192, 2, COLOR_YELLOW)
+    print("W:"..State.score[2], 216, 2, COLOR_RED)
+    print("P2", 232, 2, COLOR_RED)
+  end
+end
+
+--------------------------------------------------------------------------------
 -- UI module
 --------------------------------------------------------------------------------
 
@@ -280,7 +306,7 @@ function UI.draw_win_screen()
   rect(22, 32, 196, 76, COLOR_BLACK)
   UI.print_shadow("PLAYER "..State.winner.." WON!", 70, 55, COLOR_BLUE, false, 2)
   if State.win_timer <= 0 or math.floor(State.win_timer / 15) % 2 == 0 then
-    UI.print_shadow("Press A to restart", 70, 80, COLOR_BLUE)
+    UI.print_shadow("Press SPACE (A) to restart", 55, 80, COLOR_BLUE)
   end
 end
 
@@ -347,18 +373,7 @@ function UI.draw_game()
     UI.draw_player_sprite(player.pixelX, player.pixelY, idx == 1)
   end
 
-  -- score display
-  print(State.score[1]..":"..State.score[2], 5, 2, COLOR_BLUE)
-  if State.two_player_mode then
-    print("P1:ARROWS+SPACE P2:WASD+G", 40, 2, COLOR_WHITE)
-  else
-    print("ARROWS:MOVE SPACE:BOMB", 50, 2, COLOR_WHITE)
-  end
-  local human = State.players[1]
-  if human then
-    local available = human.maxBombs - human.activeBombs
-    print("BOMBS:"..available.."/"..human.maxBombs, 180, 2, COLOR_GREEN_LIGHT)
-  end
+  TopBar.draw()
 end
 
 function UI.update_splash()
