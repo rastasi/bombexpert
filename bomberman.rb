@@ -1,8 +1,8 @@
-# title:   game title
-# author:  game developer, email, etc.
-# desc:    short description
-# site:    website link
-# license: MIT License (change this to your license of choice)
+# title:   Bomberman Clone
+# author:  Zsolt Tasnadi
+# desc:    Simple Bomberman clone for TIC-80
+# site:    http://teletype.hu
+# license: MIT License
 # version: 0.1
 # script:  ruby
 
@@ -47,6 +47,11 @@ $powerups = []
 $bombs = []
 $explosions = []
 
+# game state
+$winner = nil
+$win_timer = 0
+$score = [0, 0]  # wins for player 1 and player 2
+
 # animation speed (pixels per frame)
 MOVE_SPEED = 2
 
@@ -80,6 +85,16 @@ init_powerups
 def TIC
   cls(0)
 
+  # if there's a winner, show message and wait for restart
+  if $winner
+    $win_timer -= 1
+    draw_win_screen
+    if btnp(4) && $win_timer <= 0
+      restart_game
+    end
+    return
+  end
+
   # update all players
   $players.each do |player|
     update_player_movement(player)
@@ -107,6 +122,44 @@ def TIC
     $explosions.delete(expl) if expl[:timer] <= 0
   end
 
+  # check powerup pickup for all players
+  $players.each do |player|
+    $powerups.reverse_each do |pw|
+      if $map[pw[:gridY]][pw[:gridX]] == EMPTY &&
+         player[:gridX] == pw[:gridX] && player[:gridY] == pw[:gridY]
+        player[:maxBombs] += 1
+        $powerups.delete(pw)
+      end
+    end
+  end
+
+  # check death by explosion for all players
+  $players.each_with_index do |player, idx|
+    $explosions.each do |expl|
+      explGridX = (expl[:x] / TILE_SIZE).floor
+      explGridY = (expl[:y] / TILE_SIZE).floor
+      if player[:gridX] == explGridX && player[:gridY] == explGridY
+        # other player wins
+        winner_idx = (idx == 0) ? 2 : 1
+        set_winner(winner_idx)
+        return
+      end
+    end
+  end
+
+  # check human player death by touching AI enemy
+  human = $players[0]
+  $players.each do |player|
+    if player[:is_ai] && human[:gridX] == player[:gridX] && human[:gridY] == player[:gridY]
+      set_winner(2) # AI wins
+      return
+    end
+  end
+
+  draw_game
+end
+
+def draw_game
   # draw map
   (0..8).each do |row|
     (0..14).each do |col|
@@ -131,17 +184,6 @@ def TIC
     end
   end
 
-  # check powerup pickup for all players
-  $players.each do |player|
-    $powerups.reverse_each do |pw|
-      if $map[pw[:gridY]][pw[:gridX]] == EMPTY &&
-         player[:gridX] == pw[:gridX] && player[:gridY] == pw[:gridY]
-        player[:maxBombs] += 1
-        $powerups.delete(pw)
-      end
-    end
-  end
-
   # draw bombs
   $bombs.each do |bomb|
     circ(bomb[:x] + 8, bomb[:y] + 8, 6, 2)
@@ -157,29 +199,63 @@ def TIC
     rect(player[:pixelX] + 2, player[:pixelY] + 2, PLAYER_SIZE, PLAYER_SIZE, player[:color])
   end
 
-  # check death by explosion for all players
-  $players.each do |player|
-    $explosions.each do |expl|
-      explGridX = (expl[:x] / TILE_SIZE).floor
-      explGridY = (expl[:y] / TILE_SIZE).floor
-      if player[:gridX] == explGridX && player[:gridY] == explGridY
-        reset_player_entity(player)
-      end
-    end
-  end
+  # score display
+  print("#{$score[0]}:#{$score[1]}", 5, 2, 12)
 
-  # check human player death by touching AI enemy
-  human = $players[0]
-  $players.each do |player|
-    if player[:is_ai] && human[:gridX] == player[:gridX] && human[:gridY] == player[:gridY]
-      reset_player_entity(human)
-    end
-  end
-
-  print("ARROWS:MOVE A:BOMB", 50, 2, 15)
+  print("ARROWS:MOVE A:BOMB", 60, 2, 15)
   human = $players[0]
   available = human[:maxBombs] - human[:activeBombs]
-  print("BOMBS:#{available}/#{human[:maxBombs]}", 170, 2, 11)
+  print("BOMBS:#{available}/#{human[:maxBombs]}", 180, 2, 11)
+end
+
+def set_winner(player_num)
+  $winner = player_num
+  $win_timer = 60 # delay before allowing restart
+  $score[player_num - 1] += 1
+end
+
+def draw_win_screen
+  # black background
+  cls(0)
+
+  # white border frame
+  rect(20, 30, 200, 80, 12)  # outer white
+  rect(22, 32, 196, 76, 0)   # inner black
+
+  # winner text (white on black)
+  text = "PLAYER #{$winner} WON!"
+  print(text, 70, 55, 12, false, 2)
+
+  # restart prompt (blink effect)
+  if $win_timer <= 0 || ($win_timer / 15) % 2 == 0
+    print("Press A to restart", 70, 80, 12)
+  end
+end
+
+def restart_game
+  $winner = nil
+  $win_timer = 0
+  $bombs = []
+  $explosions = []
+
+  # reset map
+  $map = [
+    [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+    [1,0,0,2,2,2,0,2,0,2,2,2,0,0,1],
+    [1,0,1,2,1,2,1,2,1,2,1,2,1,0,1],
+    [1,2,2,2,0,2,2,0,2,2,0,2,2,2,1],
+    [1,2,1,0,1,0,1,0,1,0,1,0,1,2,1],
+    [1,2,2,2,0,2,2,0,2,2,0,2,2,2,1],
+    [1,0,1,2,1,2,1,2,1,2,1,2,1,0,1],
+    [1,0,0,2,2,2,0,2,0,2,2,2,0,0,1],
+    [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
+  ]
+
+  # reset players
+  $players.each { |p| reset_player_entity(p) }
+
+  # reset powerups
+  init_powerups
 end
 
 # common movement animation for all players
@@ -238,26 +314,45 @@ end
 def update_ai(player)
   return if player[:moving]
 
+  # check if in danger - react immediately, no delay!
+  in_danger = is_dangerous?(player[:gridX], player[:gridY])
+
+  if in_danger
+    # find any safe direction and move there NOW
+    dirs = [[0, -1], [0, 1], [-1, 0], [1, 0]]
+
+    # try to find best escape direction
+    best_dir = nil
+    best_safe = false
+
+    dirs.each do |dir|
+      newX = player[:gridX] + dir[0]
+      newY = player[:gridY] + dir[1]
+      if can_move_to?(newX, newY)
+        safe = !is_dangerous?(newX, newY)
+        if safe && !best_safe
+          best_dir = dir
+          best_safe = true
+        elsif !best_dir
+          best_dir = dir
+        end
+      end
+    end
+
+    if best_dir
+      player[:gridX] += best_dir[0]
+      player[:gridY] += best_dir[1]
+    end
+    player[:moveTimer] = 0
+    return
+  end
+
+  # normal movement with timer
   player[:moveTimer] += 1
   return if player[:moveTimer] < 20
 
   player[:moveTimer] = 0
-
-  # check if in danger
-  danger_dir = get_escape_direction(player[:gridX], player[:gridY])
-
-  if danger_dir
-    newGridX = player[:gridX] + danger_dir[0]
-    newGridY = player[:gridY] + danger_dir[1]
-    if can_move_to?(newGridX, newGridY) && !is_dangerous?(newGridX, newGridY)
-      player[:gridX] = newGridX
-      player[:gridY] = newGridY
-    else
-      try_escape_any_direction(player)
-    end
-  else
-    ai_move_and_bomb(player)
-  end
+  ai_move_and_bomb(player)
 end
 
 # check if a position is dangerous (bomb blast zone or explosion)
@@ -344,17 +439,51 @@ def try_escape_any_direction(player)
   end
 end
 
-# escape immediately after placing bomb
+# escape immediately after placing bomb - choose best direction
 def escape_from_own_bomb(player)
-  dirs = [[0, -1], [0, 1], [-1, 0], [1, 0]].shuffle
+  bombGridX = player[:gridX]
+  bombGridY = player[:gridY]
+  dirs = [[0, -1], [0, 1], [-1, 0], [1, 0]]
+
+  # find the best escape direction
+  best_dir = nil
+  best_score = -999
+
   dirs.each do |dir|
     newX = player[:gridX] + dir[0]
     newY = player[:gridY] + dir[1]
-    if can_move_to?(newX, newY)
-      player[:gridX] = newX
-      player[:gridY] = newY
-      return
+
+    next unless can_move_to?(newX, newY)
+
+    score = 0
+
+    # strongly prefer positions outside our new bomb's blast zone
+    if !in_blast_zone?(newX, newY, bombGridX, bombGridY)
+      score += 100
     end
+
+    # count escape routes from this position (excluding back to bomb)
+    dirs.each do |dir2|
+      checkX = newX + dir2[0]
+      checkY = newY + dir2[1]
+      next if checkX == bombGridX && checkY == bombGridY # don't count going back
+      if can_move_to?(checkX, checkY)
+        score += 10
+        # extra points if that position is also safe
+        score += 20 unless in_blast_zone?(checkX, checkY, bombGridX, bombGridY)
+      end
+    end
+
+    if score > best_score
+      best_score = score
+      best_dir = dir
+    end
+  end
+
+  # move if we found a direction
+  if best_dir
+    player[:gridX] += best_dir[0]
+    player[:gridY] += best_dir[1]
   end
 end
 
@@ -371,25 +500,86 @@ def has_adjacent_breakable_wall?(gridX, gridY)
   false
 end
 
-# check if enemy has a safe escape route after placing bomb
-def has_escape_route?(gridX, gridY)
+# check if a position would be in blast zone of a bomb at bombX, bombY
+def in_blast_zone?(gridX, gridY, bombGridX, bombGridY)
+  # same position as bomb
+  return true if gridX == bombGridX && gridY == bombGridY
+
+  # horizontal blast (1 tile range)
+  if gridY == bombGridY && (gridX - bombGridX).abs <= 1
+    # check if wall blocks blast
+    if gridX < bombGridX
+      return $map[gridY][gridX + 1] != SOLID_WALL
+    elsif gridX > bombGridX
+      return $map[gridY][gridX - 1] != SOLID_WALL
+    end
+  end
+
+  # vertical blast (1 tile range)
+  if gridX == bombGridX && (gridY - bombGridY).abs <= 1
+    if gridY < bombGridY
+      return $map[gridY + 1][gridX] != SOLID_WALL
+    elsif gridY > bombGridY
+      return $map[gridY - 1][gridX] != SOLID_WALL
+    end
+  end
+
+  false
+end
+
+# check if there's a safe path to escape from bomb blast zone
+# uses BFS to find if any safe tile is reachable
+def has_safe_escape_route?(gridX, gridY)
+  bombGridX = gridX
+  bombGridY = gridY
+
+  # BFS to find safe position
+  visited = {}
+  queue = []
+
+  # start from adjacent positions (first move after placing bomb)
   dirs = [[0, -1], [0, 1], [-1, 0], [1, 0]]
   dirs.each do |dir|
     newX = gridX + dir[0]
     newY = gridY + dir[1]
-    # check if can move there and it's not in bomb blast zone
-    if can_move_to?(newX, newY)
-      # check one more step for safety
-      dirs.each do |dir2|
-        safeX = newX + dir2[0]
-        safeY = newY + dir2[1]
-        if can_move_to?(safeX, safeY)
-          return true
-        end
+    if can_move_to?(newX, newY) && !is_dangerous?(newX, newY)
+      queue << [newX, newY, 1] # position and distance
+      visited["#{newX},#{newY}"] = true
+    end
+  end
+
+  while !queue.empty?
+    cx, cy, dist = queue.shift
+
+    # check if this position is safe (outside blast zone)
+    unless in_blast_zone?(cx, cy, bombGridX, bombGridY)
+      return true
+    end
+
+    # if we can move 3+ steps, we should be able to escape
+    # (bomb timer gives us enough time)
+    if dist >= 3
+      return true
+    end
+
+    # explore neighbors
+    dirs.each do |dir|
+      newX = cx + dir[0]
+      newY = cy + dir[1]
+      key = "#{newX},#{newY}"
+      if can_move_to?(newX, newY) && !visited[key] && !is_dangerous?(newX, newY)
+        visited[key] = true
+        queue << [newX, newY, dist + 1]
       end
     end
   end
+
   false
+end
+
+# simple check for escape route (legacy, kept for compatibility)
+def has_escape_route?(gridX, gridY)
+  has_safe_escape_route?(gridX, gridY)
 end
 
 # place bomb for any player
