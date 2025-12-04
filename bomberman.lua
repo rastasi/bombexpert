@@ -6,7 +6,7 @@
 -- version: 0.1
 -- script:  lua
 
--- luacheck: globals TIC btn btnp cls rect spr print exit
+-- luacheck: globals TIC btn btnp cls rect spr print exit sfx
 -- luacheck: max line length 150
 
 -- constants
@@ -433,6 +433,7 @@ local function reset_player_entity(player)
 end
 
 local function explode(bombX, bombY)
+  sfx(0, nil, 30)  -- explosion sound, 30 ticks = 0.5 sec
   table.insert(explosions, {x = bombX, y = bombY, timer = EXPLOSION_TIMER})
 
   local gridX = math.floor(bombX / TILE_SIZE) + 1
@@ -709,7 +710,7 @@ end
 -- </WAVES>
 
 -- <SFX>
--- 000:000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000304000000000
+-- 000:f0e0d0c0b0a090807060504030201000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020500000
 -- </SFX>
 
 -- <TRACKS>
