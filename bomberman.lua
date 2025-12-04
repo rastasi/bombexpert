@@ -172,7 +172,11 @@ function Powerup.init()
   for row = 1, MAP_HEIGHT do
     for col = 1, MAP_WIDTH do
       if State.map[row][col] == BREAKABLE_WALL and math.random() < POWERUP_SPAWN_CHANCE then
-        table.insert(State.powerups, {gridX = col, gridY = row, type = Powerup.get_random_type()})
+        table.insert(State.powerups, {
+          gridX = col,
+          gridY = row,
+          type = Powerup.get_random_type()
+        })
       end
     end
   end
@@ -488,14 +492,26 @@ function Bomb.place(player)
     end
   end
 
-  table.insert(State.bombs, {x = bombX, y = bombY, timer = BOMB_TIMER, owner = player, power = player.bombPower})
+  table.insert(State.bombs, {
+    x = bombX,
+    y = bombY,
+    timer = BOMB_TIMER,
+    owner = player,
+    power = player.bombPower
+  })
   player.activeBombs = player.activeBombs + 1
 end
 
 function Bomb.explode(bombX, bombY, power)
   power = power or 1
   sfx(0, nil, 30)
-  table.insert(State.explosions, {x = bombX, y = bombY, timer = EXPLOSION_TIMER, dist = 0, spread = 0})
+  table.insert(State.explosions, {
+    x = bombX,
+    y = bombY,
+    timer = EXPLOSION_TIMER,
+    dist = 0,
+    spread = 0
+  })
 
   local gridX = math.floor(bombX / TILE_SIZE) + 1
   local gridY = math.floor(bombY / TILE_SIZE) + 1
@@ -510,10 +526,22 @@ function Bomb.explode(bombX, bombY, power)
       if tile == SOLID_WALL then break end
       if tile == BREAKABLE_WALL then
         State.map[gridY][eGridX] = EMPTY
-        table.insert(State.explosions, {x = explX, y = bombY, timer = EXPLOSION_TIMER, dist = dist, spread = dist * SPREAD_DELAY})
+        table.insert(State.explosions, {
+          x = explX,
+          y = bombY,
+          timer = EXPLOSION_TIMER,
+          dist = dist,
+          spread = dist * SPREAD_DELAY
+        })
         break
       end
-      table.insert(State.explosions, {x = explX, y = bombY, timer = EXPLOSION_TIMER, dist = dist, spread = dist * SPREAD_DELAY})
+      table.insert(State.explosions, {
+        x = explX,
+        y = bombY,
+        timer = EXPLOSION_TIMER,
+        dist = dist,
+        spread = dist * SPREAD_DELAY
+      })
     end
   end
 
@@ -527,10 +555,22 @@ function Bomb.explode(bombX, bombY, power)
       if tile == SOLID_WALL then break end
       if tile == BREAKABLE_WALL then
         State.map[eGridY][gridX] = EMPTY
-        table.insert(State.explosions, {x = bombX, y = explY, timer = EXPLOSION_TIMER, dist = dist, spread = dist * SPREAD_DELAY})
+        table.insert(State.explosions, {
+          x = bombX,
+          y = explY,
+          timer = EXPLOSION_TIMER,
+          dist = dist,
+          spread = dist * SPREAD_DELAY
+        })
         break
       end
-      table.insert(State.explosions, {x = bombX, y = explY, timer = EXPLOSION_TIMER, dist = dist, spread = dist * SPREAD_DELAY})
+      table.insert(State.explosions, {
+        x = bombX,
+        y = explY,
+        timer = EXPLOSION_TIMER,
+        dist = dist,
+        spread = dist * SPREAD_DELAY
+      })
     end
   end
 end
@@ -638,7 +678,12 @@ function AI.in_blast_zone(gridX, gridY, bombGridX, bombGridY)
 end
 
 function AI.has_adjacent_breakable_wall(gridX, gridY)
-  local dirs = {{0, -1}, {0, 1}, {-1, 0}, {1, 0}}
+  local dirs = {
+    {0, -1},
+    {0, 1},
+    {-1, 0},
+    {1, 0}
+  }
   for _, dir in ipairs(dirs) do
     local checkX = gridX + dir[1]
     local checkY = gridY + dir[2]
@@ -652,7 +697,12 @@ function AI.has_adjacent_breakable_wall(gridX, gridY)
 end
 
 function AI.has_escape_route(gridX, gridY, player)
-  local dirs = {{0, -1}, {0, 1}, {-1, 0}, {1, 0}}
+  local dirs = {
+    {0, -1},
+    {0, 1},
+    {-1, 0},
+    {1, 0}
+  }
   for _, dir in ipairs(dirs) do
     local newX = gridX + dir[1]
     local newY = gridY + dir[2]
@@ -672,7 +722,12 @@ end
 function AI.escape_from_bomb(player)
   local bombGridX = player.gridX
   local bombGridY = player.gridY
-  local dirs = {{0, -1}, {0, 1}, {-1, 0}, {1, 0}}
+  local dirs = {
+    {0, -1},
+    {0, 1},
+    {-1, 0},
+    {1, 0}
+  }
 
   local best_dir = nil
   local best_score = -999
@@ -744,7 +799,12 @@ function AI.move_and_bomb(player, target)
   elseif dy < 0 then table.insert(dirs, {0, -1})
   end
 
-  local all_dirs = {{0, -1}, {0, 1}, {-1, 0}, {1, 0}}
+  local all_dirs = {
+    {0, -1},
+    {0, 1},
+    {-1, 0},
+    {1, 0}
+  }
   for _, d in ipairs(all_dirs) do
     table.insert(dirs, d)
   end
@@ -766,7 +826,12 @@ function AI.update(player, target)
   local in_danger = AI.is_dangerous(player.gridX, player.gridY)
 
   if in_danger then
-    local dirs = {{0, -1}, {0, 1}, {-1, 0}, {1, 0}}
+    local dirs = {
+    {0, -1},
+    {0, 1},
+    {-1, 0},
+    {1, 0}
+  }
     local best_dir = nil
     local best_safe = false
 
