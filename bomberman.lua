@@ -223,6 +223,10 @@ function Input.action_pressed()
   return btnp(4) or keyp(48)  -- A button or Space
 end
 
+function Input.back_pressed()
+  return keyp(51)  -- Backspace key
+end
+
 function Input.up()
   return btn(0)
 end
@@ -451,7 +455,9 @@ function Menu.update()
   UI.print_shadow("Credits", 70, 102, credits_color)
   UI.print_shadow("Exit", 70, 116, exit_color)
 
-  if Input.up_pressed() then
+  if Input.back_pressed() then
+    exit()
+  elseif Input.up_pressed() then
     State.menu_selection = State.menu_selection - 1
     if State.menu_selection < 1 then State.menu_selection = 5 end
   elseif Input.down_pressed() then
@@ -518,9 +524,9 @@ function Help.update()
   print("+1 Blast range", 32, 104, COLOR_ORANGE)
 
   -- Back instruction
-  UI.print_shadow("Press SPACE to return", 60, 122, COLOR_CYAN)
+  UI.print_shadow("SPACE / Backspace: return", 50, 122, COLOR_CYAN)
 
-  if Input.action_pressed() then
+  if Input.action_pressed() or Input.back_pressed() then
     State.game_state = GAME_STATE_MENU
   end
 end
@@ -539,9 +545,9 @@ function Credits.update()
   UI.print_shadow("Sponsored by Zen Heads", 52, 82, COLOR_LIGHT)
   UI.print_shadow("Happy X-MAS!", 80, 98, COLOR_RED)
 
-  UI.print_shadow("Press SPACE to return", 60, 122, COLOR_CYAN)
+  UI.print_shadow("SPACE / Backspace: return", 50, 122, COLOR_CYAN)
 
-  if Input.action_pressed() then
+  if Input.action_pressed() or Input.back_pressed() then
     State.game_state = GAME_STATE_MENU
   end
 end
@@ -1216,6 +1222,12 @@ function TIC()
 
   -- GAME_STATE_PLAYING
   cls(COLOR_GREEN)
+
+  -- ESC to return to menu
+  if Input.back_pressed() then
+    State.game_state = GAME_STATE_MENU
+    return
+  end
 
   if State.winner then
     State.win_timer = State.win_timer - 1
