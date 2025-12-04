@@ -25,16 +25,6 @@ local EMPTY = 0
 local SOLID_WALL = 1
 local BREAKABLE_WALL = 2
 
--- Timing constants
-local BOMB_TIMER = 90
-local EXPLOSION_TIMER = 30
-local SPREAD_DELAY = 6        -- ticks per cell spread
-local SPLASH_DURATION = 90    -- 1.5 seconds at 60fps
-local WIN_SCREEN_DURATION = 60
-
--- Movement
-local MOVE_SPEED = 2
-
 -- Directions (up, down, left, right)
 local DIRECTIONS = {
   {0, -1},
@@ -70,7 +60,7 @@ local GAME_STATE_MENU = 1
 local GAME_STATE_PLAYING = 2
 local GAME_STATE_HELP = 3
 local GAME_STATE_CREDITS = 4
-local GAME_STATE_CONFIG = 5
+local GAME_STATE_SETTINGS = 5
 
 --------------------------------------------------------------------------------
 -- Game Configuration (easy to tweak game parameters)
@@ -100,8 +90,6 @@ local Config = {
 
   -- Map settings
   map = {
-    width = 27,
-    height = 15,
     breakable_wall_chance = 0.7,
     powerup_spawn_chance = 0.3,
     generator = "classic",
@@ -148,7 +136,7 @@ local Splash = {}
 local Menu = {}
 local Help = {}
 local Credits = {}
-local ConfigMenu = {}
+local Settings = {}
 local WinScreen = {}
 local GameBoard = {}
 local Bomb = {}
@@ -162,9 +150,10 @@ local Game = {}
 
 local State = {
   game_state = GAME_STATE_SPLASH,
-  splash_timer = SPLASH_DURATION,
+  splash_timer = 0,  -- Will be set from Config on first frame
+  initialized = false,  -- Config loaded flag
   menu_selection = 1,
-  config_selection = 1,
+  settings_selection = 1,
   two_player_mode = false,
   players = {},
   powerups = {},
@@ -452,11 +441,8 @@ function MapGenerators.corridors(row, col)
   return EMPTY
 end
 
--- Current map generator (change this to switch map styles)
-Map.current_generator = "classic"
-
 function Map.generate(generator_name)
-  generator_name = generator_name or Map.current_generator
+  generator_name = generator_name or Config.map.generator
   local generator = MapGenerators[generator_name] or MapGenerators.classic
 
   for row = 1, MAP_HEIGHT do
@@ -557,13 +543,12 @@ end
 -- Splash module
 --------------------------------------------------------------------------------
 
-local config_loaded = false
-
 function Splash.update()
-  -- Load saved config on first frame
-  if not config_loaded then
-    ConfigMenu.load()
-    config_loaded = true
+  -- Initialize on first frame
+  if not State.initialized then
+    Settings.load()
+    State.splash_timer = Config.timing.splash_duration
+    State.initialized = true
   end
 
   cls(COLOR_BLACK)
@@ -584,7 +569,7 @@ end
 local MENU_ITEMS = {
   {label = "1 Player Game", action = function() State.two_player_mode = false; State.game_state = GAME_STATE_PLAYING; Game.init() end},
   {label = "2 Player Game", action = function() State.two_player_mode = true; State.game_state = GAME_STATE_PLAYING; Game.init() end},
-  {label = "Settings", action = function() State.game_state = GAME_STATE_CONFIG end},
+  {label = "Settings", action = function() State.game_state = GAME_STATE_SETTINGS end},
   {label = "Help", action = function() State.game_state = GAME_STATE_HELP end},
   {label = "Credits", action = function() State.game_state = GAME_STATE_CREDITS end},
   {label = "Exit", action = exit},
@@ -691,14 +676,14 @@ function Credits.update()
 end
 
 --------------------------------------------------------------------------------
--- ConfigMenu module (persistent settings)
+-- Settings module (persistent settings menu)
 --------------------------------------------------------------------------------
 
 -- luacheck: globals pmem
 
 -- Settings definition: each setting maps to a pmem slot
 -- pmem stores integers, so we use multipliers for decimals
-local CONFIG_ITEMS = {
+local SETTINGS_ITEMS = {
   {label = "Start Bombs", path = {"player", "start_bombs"}, min = 1, max = 5, step = 1, pmem_slot = 0},
   {label = "Start Power", path = {"player", "start_power"}, min = 1, max = 5, step = 1, pmem_slot = 1},
   {label = "Move Speed", path = {"player", "move_speed"}, min = 1, max = 4, step = 1, pmem_slot = 2},
@@ -756,37 +741,33 @@ local function get_display_value(item, value)
   return tostring(value)
 end
 
-function ConfigMenu.load()
+function Settings.load()
   -- Check if pmem has been initialized
   if pmem(PMEM_INIT_SLOT) ~= PMEM_INIT_VALUE then
     -- First run - save defaults
-    ConfigMenu.save()
+    Settings.save()
     pmem(PMEM_INIT_SLOT, PMEM_INIT_VALUE)
     return
   end
 
   -- Load values from pmem
-  for _, item in ipairs(CONFIG_ITEMS) do
+  for _, item in ipairs(SETTINGS_ITEMS) do
     local stored = pmem(item.pmem_slot)
     if stored >= item.min and stored <= item.max then
       set_config_value(item, stored)
     end
   end
 
-  -- Apply map generator setting
-  if Config.map.generator then
-    Map.current_generator = Config.map.generator
-  end
 end
 
-function ConfigMenu.save()
-  for _, item in ipairs(CONFIG_ITEMS) do
+function Settings.save()
+  for _, item in ipairs(SETTINGS_ITEMS) do
     local value = get_config_value(item)
     pmem(item.pmem_slot, value)
   end
 end
 
-function ConfigMenu.update()
+function Settings.update()
   cls(COLOR_BLACK)
 
   UI.print_shadow("Settings", 85, 4, COLOR_BLUE, false, 2)
@@ -794,9 +775,9 @@ function ConfigMenu.update()
   local start_y = 22
   local item_height = 11
 
-  for i, item in ipairs(CONFIG_ITEMS) do
+  for i, item in ipairs(SETTINGS_ITEMS) do
     local y = start_y + (i - 1) * item_height
-    local is_selected = (State.config_selection == i)
+    local is_selected = (State.settings_selection == i)
     local color = is_selected and COLOR_CYAN or COLOR_GRAY_LIGHT
 
     -- Cursor
@@ -815,8 +796,8 @@ function ConfigMenu.update()
   end
 
   -- Back option
-  local back_y = start_y + #CONFIG_ITEMS * item_height + 4
-  local back_selected = (State.config_selection == #CONFIG_ITEMS + 1)
+  local back_y = start_y + #SETTINGS_ITEMS * item_height + 4
+  local back_selected = (State.settings_selection == #SETTINGS_ITEMS + 1)
   if back_selected then
     print(">", 71, back_y, COLOR_CYAN)
   end
@@ -826,33 +807,29 @@ function ConfigMenu.update()
   print("UP/DOWN:select LEFT/RIGHT:change", 28, 128, COLOR_GRAY_LIGHT)
 
   -- Input handling
-  local max_selection = #CONFIG_ITEMS + 1
+  local max_selection = #SETTINGS_ITEMS + 1
 
   if Input.up_pressed() then
-    State.config_selection = State.config_selection - 1
-    if State.config_selection < 1 then State.config_selection = max_selection end
+    State.settings_selection = State.settings_selection - 1
+    if State.settings_selection < 1 then State.settings_selection = max_selection end
   elseif Input.down_pressed() then
-    State.config_selection = State.config_selection + 1
-    if State.config_selection > max_selection then State.config_selection = 1 end
-  elseif Input.left_pressed() and State.config_selection <= #CONFIG_ITEMS then
-    local item = CONFIG_ITEMS[State.config_selection]
+    State.settings_selection = State.settings_selection + 1
+    if State.settings_selection > max_selection then State.settings_selection = 1 end
+  elseif Input.left_pressed() and State.settings_selection <= #SETTINGS_ITEMS then
+    local item = SETTINGS_ITEMS[State.settings_selection]
     local value = get_config_value(item)
     value = value - item.step
     if value < item.min then value = item.max end
     set_config_value(item, value)
-  elseif Input.right_pressed() and State.config_selection <= #CONFIG_ITEMS then
-    local item = CONFIG_ITEMS[State.config_selection]
+  elseif Input.right_pressed() and State.settings_selection <= #SETTINGS_ITEMS then
+    local item = SETTINGS_ITEMS[State.settings_selection]
     local value = get_config_value(item)
     value = value + item.step
     if value > item.max then value = item.min end
     set_config_value(item, value)
   elseif Input.action_pressed() or Input.back_pressed() then
-    -- Apply map generator
-    if Config.map.generator then
-      Map.current_generator = Config.map.generator
-    end
-    ConfigMenu.save()
-    State.config_selection = 1
+    Settings.save()
+    State.settings_selection = 1
     State.game_state = GAME_STATE_MENU
   end
 end
@@ -911,7 +888,7 @@ function Bomb.draw_explosions()
     if expl.spread <= 0 then
       rect(drawX, drawY, TILE_SIZE, TILE_SIZE, COLOR_RED)
     else
-      local progress = 1 - (expl.spread / (expl.dist * SPREAD_DELAY))
+      local progress = 1 - (expl.spread / (expl.dist * Config.bomb.spread_delay))
       if progress > 0 then
         local size = math.floor(TILE_SIZE * progress)
         local off = math.floor((TILE_SIZE - size) / 2)
@@ -936,7 +913,7 @@ function Bomb.place(player)
   table.insert(State.bombs, {
     x = bombX,
     y = bombY,
-    timer = BOMB_TIMER,
+    timer = Config.bomb.timer,
     owner = player,
     power = player.bombPower
   })
@@ -972,9 +949,9 @@ local function spread_explosion(bombX, bombY, gridX, gridY, power, is_horizontal
       table.insert(State.explosions, {
         x = explX,
         y = explY,
-        timer = EXPLOSION_TIMER,
+        timer = Config.bomb.explosion_duration,
         dist = dist,
-        spread = dist * SPREAD_DELAY
+        spread = dist * Config.bomb.spread_delay
       })
 
       if is_breakable then break end
@@ -988,7 +965,7 @@ function Bomb.explode(bombX, bombY, power)
   table.insert(State.explosions, {
     x = bombX,
     y = bombY,
-    timer = EXPLOSION_TIMER,
+    timer = Config.bomb.explosion_duration,
     dist = 0,
     spread = 0
   })
@@ -1338,16 +1315,16 @@ function Player.update_movement(player)
   local targetY = (player.gridY - 1) * TILE_SIZE
 
   if player.pixelX < targetX then
-    player.pixelX = math.min(player.pixelX + MOVE_SPEED, targetX)
+    player.pixelX = math.min(player.pixelX + Config.player.move_speed, targetX)
     player.moving = true
   elseif player.pixelX > targetX then
-    player.pixelX = math.max(player.pixelX - MOVE_SPEED, targetX)
+    player.pixelX = math.max(player.pixelX - Config.player.move_speed, targetX)
     player.moving = true
   elseif player.pixelY < targetY then
-    player.pixelY = math.min(player.pixelY + MOVE_SPEED, targetY)
+    player.pixelY = math.min(player.pixelY + Config.player.move_speed, targetY)
     player.moving = true
   elseif player.pixelY > targetY then
-    player.pixelY = math.max(player.pixelY - MOVE_SPEED, targetY)
+    player.pixelY = math.max(player.pixelY - Config.player.move_speed, targetY)
     player.moving = true
   else
     player.moving = false
@@ -1446,7 +1423,7 @@ end
 
 function Game.set_winner(player_num)
   State.winner = player_num
-  State.win_timer = WIN_SCREEN_DURATION
+  State.win_timer = Config.timing.win_screen_duration
   State.score[player_num] = State.score[player_num] + 1
 end
 
@@ -1521,7 +1498,7 @@ local STATE_HANDLERS = {
   [GAME_STATE_MENU] = Menu.update,
   [GAME_STATE_HELP] = Help.update,
   [GAME_STATE_CREDITS] = Credits.update,
-  [GAME_STATE_CONFIG] = ConfigMenu.update,
+  [GAME_STATE_SETTINGS] = Settings.update,
   [GAME_STATE_PLAYING] = update_playing,
 }
 
