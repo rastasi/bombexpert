@@ -31,9 +31,6 @@ local EXPLOSION_TIMER = 30
 local SPREAD_DELAY = 6        -- ticks per cell spread
 local SPLASH_DURATION = 90    -- 1.5 seconds at 60fps
 local WIN_SCREEN_DURATION = 60
-local AI_MOVE_DELAY = 20
-local AI_BOMB_COOLDOWN = 90
-local BOMB_DANGER_THRESHOLD = 30  -- AI considers bomb dangerous below this timer
 
 -- Movement
 local MOVE_SPEED = 2
@@ -74,8 +71,67 @@ local GAME_STATE_PLAYING = 2
 local GAME_STATE_HELP = 3
 local GAME_STATE_CREDITS = 4
 
--- Powerup spawn chance
-local POWERUP_SPAWN_CHANCE = 0.3
+--------------------------------------------------------------------------------
+-- Game Configuration (easy to tweak game parameters)
+--------------------------------------------------------------------------------
+
+local Config = {
+  -- Player settings
+  player = {
+    move_speed = 2,
+    start_bombs = 1,
+    start_power = 1,
+  },
+
+  -- Bomb settings
+  bomb = {
+    timer = 90,
+    explosion_duration = 30,
+    spread_delay = 6,
+  },
+
+  -- AI settings
+  ai = {
+    move_delay = 20,
+    bomb_cooldown = 90,
+    danger_threshold = 30,
+  },
+
+  -- Map settings
+  map = {
+    width = 27,
+    height = 15,
+    breakable_wall_chance = 0.7,
+    powerup_spawn_chance = 0.3,
+  },
+
+  -- Timing
+  timing = {
+    splash_duration = 90,
+    win_screen_duration = 60,
+  },
+}
+
+--------------------------------------------------------------------------------
+-- Sound System (centralized audio management)
+--------------------------------------------------------------------------------
+
+local Sound = {
+  effects = {
+    explosion = {id = 0, note = nil, duration = 30},
+    pickup = {id = 1, note = nil, duration = 8},
+    -- Add new sounds here:
+    -- menu_select = {id = 2, note = nil, duration = 10},
+    -- player_death = {id = 3, note = nil, duration = 20},
+  }
+}
+
+function Sound.play(effect_name)
+  local effect = Sound.effects[effect_name]
+  if effect then
+    sfx(effect.id, effect.note, effect.duration)
+  end
+end
 
 --------------------------------------------------------------------------------
 -- Modules
@@ -178,7 +234,7 @@ function Powerup.init()
   State.powerups = {}
   for row = 1, MAP_HEIGHT do
     for col = 1, MAP_WIDTH do
-      if State.map[row][col] == BREAKABLE_WALL and math.random() < POWERUP_SPAWN_CHANCE then
+      if State.map[row][col] == BREAKABLE_WALL and math.random() < Config.map.powerup_spawn_chance then
         table.insert(State.powerups, {
           gridX = col,
           gridY = row,
@@ -211,7 +267,7 @@ function Powerup.check_pickup()
         local config = Powerup.get_config(pw.type)
         config.apply(player)
         table.remove(State.powerups, i)
-        sfx(1, nil, 8)
+        Sound.play("pickup")
       end
     end
   end
@@ -322,28 +378,98 @@ function Map.is_spawn_area(row, col)
   return false
 end
 
-function Map.generate()
+--------------------------------------------------------------------------------
+-- Map Generators (extensible map generation system)
+--------------------------------------------------------------------------------
+
+local MapGenerators = {}
+
+-- Classic Bomberman grid pattern
+function MapGenerators.classic(row, col)
+  if row % 2 == 1 and col % 2 == 1 and row > 1 and col > 1 then
+    return SOLID_WALL
+  elseif math.random() < Config.map.breakable_wall_chance then
+    return BREAKABLE_WALL
+  end
+  return EMPTY
+end
+
+-- Open arena with fewer pillars
+function MapGenerators.arena(row, col)
+  -- Only pillars at every 4th position
+  if row % 4 == 1 and col % 4 == 1 and row > 1 and col > 1 then
+    return SOLID_WALL
+  elseif math.random() < Config.map.breakable_wall_chance * 0.5 then
+    return BREAKABLE_WALL
+  end
+  return EMPTY
+end
+
+-- Dense maze with more walls
+function MapGenerators.maze(row, col)
+  if row % 2 == 1 and col % 2 == 1 and row > 1 and col > 1 then
+    return SOLID_WALL
+  elseif math.random() < 0.85 then
+    return BREAKABLE_WALL
+  end
+  return EMPTY
+end
+
+-- Corridors pattern
+function MapGenerators.corridors(row, col)
+  -- Horizontal corridors at rows 4, 8, 12
+  if (row == 4 or row == 8 or row == 12) and col > 1 and col < MAP_WIDTH then
+    if math.random() < 0.3 then
+      return BREAKABLE_WALL
+    end
+    return EMPTY
+  end
+  -- Vertical corridors at cols 7, 14, 21
+  if (col == 7 or col == 14 or col == 21) and row > 1 and row < MAP_HEIGHT then
+    if math.random() < 0.3 then
+      return BREAKABLE_WALL
+    end
+    return EMPTY
+  end
+  -- Rest is classic pattern
+  if row % 2 == 1 and col % 2 == 1 and row > 1 and col > 1 then
+    return SOLID_WALL
+  elseif math.random() < Config.map.breakable_wall_chance then
+    return BREAKABLE_WALL
+  end
+  return EMPTY
+end
+
+-- Current map generator (change this to switch map styles)
+Map.current_generator = "classic"
+
+function Map.generate(generator_name)
+  generator_name = generator_name or Map.current_generator
+  local generator = MapGenerators[generator_name] or MapGenerators.classic
+
   for row = 1, MAP_HEIGHT do
     for col = 1, MAP_WIDTH do
-      -- Border walls
+      -- Border walls (always)
       if row == 1 or row == MAP_HEIGHT or col == 1 or col == MAP_WIDTH then
         State.map[row][col] = SOLID_WALL
-      -- Spawn areas MUST be empty
+      -- Spawn areas MUST be empty (always)
       elseif Map.is_spawn_area(row, col) then
         State.map[row][col] = EMPTY
-      -- Grid pattern solid walls (odd row AND odd col, but not border)
-      elseif row % 2 == 1 and col % 2 == 1 and row > 1 and col > 1 then
-        State.map[row][col] = SOLID_WALL
-      -- Random: breakable wall or empty
+      -- Use selected generator for the rest
       else
-        if math.random() < 0.7 then
-          State.map[row][col] = BREAKABLE_WALL
-        else
-          State.map[row][col] = EMPTY
-        end
+        State.map[row][col] = generator(row, col)
       end
     end
   end
+end
+
+-- Helper to get available generators
+function Map.get_generators()
+  local names = {}
+  for name, _ in pairs(MapGenerators) do
+    table.insert(names, name)
+  end
+  return names
 end
 
 function Map.draw_shadows()
@@ -670,7 +796,7 @@ end
 
 function Bomb.explode(bombX, bombY, power)
   power = power or 1
-  sfx(0, nil, 30)
+  Sound.play("explosion")
   table.insert(State.explosions, {
     x = bombX,
     y = bombY,
@@ -752,7 +878,7 @@ function AI.is_dangerous(gridX, gridY)
     local power = bomb.power or 1
 
     -- Only urgent if bomb is about to explode
-    if bomb.timer < BOMB_DANGER_THRESHOLD then
+    if bomb.timer < Config.ai.danger_threshold then
       if gridX == bombGridX and gridY == bombGridY then
         return true
       end
@@ -891,7 +1017,7 @@ function AI.move_and_bomb(player, target)
       player.lastGridX = player.gridX
       player.lastGridY = player.gridY
       Bomb.place(player)
-      player.bombCooldown = AI_BOMB_COOLDOWN
+      player.bombCooldown = Config.ai.bomb_cooldown
       AI.escape_from_bomb(player)
       return
     end
@@ -983,7 +1109,7 @@ function AI.update(player, target)
   end
 
   player.moveTimer = player.moveTimer + 1
-  if player.moveTimer < AI_MOVE_DELAY then return end
+  if player.moveTimer < Config.ai.move_delay then return end
 
   player.moveTimer = 0
   AI.move_and_bomb(player, target)
@@ -1007,9 +1133,9 @@ function Player.create(gridX, gridY, color, is_ai)
     pixelX = (gridX - 1) * TILE_SIZE,
     pixelY = (gridY - 1) * TILE_SIZE,
     moving = false,
-    maxBombs = 1,
+    maxBombs = Config.player.start_bombs,
     activeBombs = 0,
-    bombPower = 1,
+    bombPower = Config.player.start_power,
     color = color,
     is_ai = is_ai,
     moveTimer = 0,
@@ -1093,9 +1219,9 @@ function Player.reset(player)
   player.pixelX = (player.spawnX - 1) * TILE_SIZE
   player.pixelY = (player.spawnY - 1) * TILE_SIZE
   player.moving = false
-  player.maxBombs = 1
+  player.maxBombs = Config.player.start_bombs
   player.activeBombs = 0
-  player.bombPower = 1
+  player.bombPower = Config.player.start_power
   player.bombCooldown = 0
 end
 
