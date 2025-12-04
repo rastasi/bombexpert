@@ -69,6 +69,10 @@ local Input = {}
 local Map = {}
 local UI = {}
 local TopBar = {}
+local Splash = {}
+local Menu = {}
+local WinScreen = {}
+local GameBoard = {}
 local Bomb = {}
 local AI = {}
 local Player = {}
@@ -282,7 +286,7 @@ function TopBar.draw()
 end
 
 --------------------------------------------------------------------------------
--- UI module
+-- UI module (shared utilities)
 --------------------------------------------------------------------------------
 
 function UI.print_shadow(text, x, y, color, fixed, scale)
@@ -291,92 +295,11 @@ function UI.print_shadow(text, x, y, color, fixed, scale)
   print(text, x, y, color, fixed, scale)
 end
 
-function UI.draw_player_sprite(x, y, is_player1)
-  local sprite_id = is_player1 and ASTRONAUT_BLUE or ASTRONAUT_RED
-  spr(sprite_id, x, y, 0, 2)
-end
+--------------------------------------------------------------------------------
+-- Splash module
+--------------------------------------------------------------------------------
 
-function UI.draw_bomb_sprite(x, y)
-  spr(BOMB_SPRITE, x, y, 0, 2)
-end
-
-function UI.draw_win_screen()
-  cls(COLOR_BLACK)
-  rect(20, 30, 200, 80, COLOR_BLUE)
-  rect(22, 32, 196, 76, COLOR_BLACK)
-  UI.print_shadow("PLAYER "..State.winner.." WON!", 70, 55, COLOR_BLUE, false, 2)
-  if State.win_timer <= 0 or math.floor(State.win_timer / 15) % 2 == 0 then
-    UI.print_shadow("Press SPACE (A) to restart", 55, 80, COLOR_BLUE)
-  end
-end
-
-function UI.draw_game()
-  -- draw wall shadows first
-  for row = 1, MAP_HEIGHT do
-    for col = 1, MAP_WIDTH do
-      local tile = State.map[row][col]
-      if tile == SOLID_WALL or tile == BREAKABLE_WALL then
-        local drawX = (col - 1) * TILE_SIZE
-        local drawY = (row - 1) * TILE_SIZE
-        rect(drawX + 2, drawY + 2, TILE_SIZE, TILE_SIZE, COLOR_SHADOW)
-      end
-    end
-  end
-
-  -- draw explosions (after shadows, before walls)
-  for _, expl in ipairs(State.explosions) do
-    if expl.spread <= 0 then
-      rect(expl.x, expl.y, TILE_SIZE, TILE_SIZE, COLOR_RED)
-    else
-      local progress = 1 - (expl.spread / (expl.dist * SPREAD_DELAY))
-      if progress > 0 then
-        local size = math.floor(TILE_SIZE * progress)
-        local offset = math.floor((TILE_SIZE - size) / 2)
-        rect(expl.x + offset, expl.y + offset, size, size, COLOR_RED)
-      end
-    end
-  end
-
-  -- draw map
-  for row = 1, MAP_HEIGHT do
-    for col = 1, MAP_WIDTH do
-      local tile = State.map[row][col]
-      local drawX = (col - 1) * TILE_SIZE
-      local drawY = (row - 1) * TILE_SIZE
-      if tile == SOLID_WALL then
-        spr(SOLID_WALL_SPRITE, drawX, drawY, 0, 2)
-      elseif tile == BREAKABLE_WALL then
-        spr(BREAKABLE_WALL_SPRITE, drawX, drawY, 0, 2)
-      end
-    end
-  end
-
-  -- draw powerups
-  for _, pw in ipairs(State.powerups) do
-    if State.map[pw.gridY][pw.gridX] == EMPTY then
-      local drawX = (pw.gridX - 1) * TILE_SIZE
-      local drawY = (pw.gridY - 1) * TILE_SIZE
-      local config = get_powerup_config(pw.type)
-      rect(drawX + 5, drawY + 5, 10, 10, COLOR_SHADOW)
-      rect(drawX + 3, drawY + 3, 10, 10, config.color)
-      print(config.label, drawX + 5, drawY + 5, COLOR_BLACK)
-    end
-  end
-
-  -- draw bombs
-  for _, bomb in ipairs(State.bombs) do
-    UI.draw_bomb_sprite(bomb.x, bomb.y)
-  end
-
-  -- draw players
-  for idx, player in ipairs(State.players) do
-    UI.draw_player_sprite(player.pixelX, player.pixelY, idx == 1)
-  end
-
-  TopBar.draw()
-end
-
-function UI.update_splash()
+function Splash.update()
   cls(COLOR_BLACK)
 
   UI.print_shadow("Bomberman", 85, 50, COLOR_BLUE, false, 2)
@@ -388,7 +311,11 @@ function UI.update_splash()
   end
 end
 
-function UI.update_menu()
+--------------------------------------------------------------------------------
+-- Menu module
+--------------------------------------------------------------------------------
+
+function Menu.update()
   cls(COLOR_BLACK)
 
   UI.print_shadow("Bomberman", 85, 30, COLOR_BLUE, false, 2)
@@ -427,8 +354,96 @@ function UI.update_menu()
 end
 
 --------------------------------------------------------------------------------
+-- WinScreen module
+--------------------------------------------------------------------------------
+
+function WinScreen.draw()
+  cls(COLOR_BLACK)
+  rect(20, 30, 200, 80, COLOR_BLUE)
+  rect(22, 32, 196, 76, COLOR_BLACK)
+  UI.print_shadow("PLAYER "..State.winner.." WON!", 70, 55, COLOR_BLUE, false, 2)
+  if State.win_timer <= 0 or math.floor(State.win_timer / 15) % 2 == 0 then
+    UI.print_shadow("Press SPACE (A) to restart", 55, 80, COLOR_BLUE)
+  end
+end
+
+--------------------------------------------------------------------------------
+-- GameBoard module
+--------------------------------------------------------------------------------
+
+function GameBoard.draw()
+  -- draw wall shadows first
+  for row = 1, MAP_HEIGHT do
+    for col = 1, MAP_WIDTH do
+      local tile = State.map[row][col]
+      if tile == SOLID_WALL or tile == BREAKABLE_WALL then
+        local drawX = (col - 1) * TILE_SIZE
+        local drawY = (row - 1) * TILE_SIZE
+        rect(drawX + 2, drawY + 2, TILE_SIZE, TILE_SIZE, COLOR_SHADOW)
+      end
+    end
+  end
+
+  -- draw explosions (after shadows, before walls)
+  for _, expl in ipairs(State.explosions) do
+    if expl.spread <= 0 then
+      rect(expl.x, expl.y, TILE_SIZE, TILE_SIZE, COLOR_RED)
+    else
+      local progress = 1 - (expl.spread / (expl.dist * SPREAD_DELAY))
+      if progress > 0 then
+        local size = math.floor(TILE_SIZE * progress)
+        local offset = math.floor((TILE_SIZE - size) / 2)
+        rect(expl.x + offset, expl.y + offset, size, size, COLOR_RED)
+      end
+    end
+  end
+
+  -- draw map tiles
+  for row = 1, MAP_HEIGHT do
+    for col = 1, MAP_WIDTH do
+      local tile = State.map[row][col]
+      local drawX = (col - 1) * TILE_SIZE
+      local drawY = (row - 1) * TILE_SIZE
+      if tile == SOLID_WALL then
+        spr(SOLID_WALL_SPRITE, drawX, drawY, 0, 2)
+      elseif tile == BREAKABLE_WALL then
+        spr(BREAKABLE_WALL_SPRITE, drawX, drawY, 0, 2)
+      end
+    end
+  end
+
+  -- draw powerups
+  for _, pw in ipairs(State.powerups) do
+    if State.map[pw.gridY][pw.gridX] == EMPTY then
+      local drawX = (pw.gridX - 1) * TILE_SIZE
+      local drawY = (pw.gridY - 1) * TILE_SIZE
+      local config = get_powerup_config(pw.type)
+      rect(drawX + 5, drawY + 5, 10, 10, COLOR_SHADOW)
+      rect(drawX + 3, drawY + 3, 10, 10, config.color)
+      print(config.label, drawX + 5, drawY + 5, COLOR_BLACK)
+    end
+  end
+
+  -- draw bombs
+  for _, bomb in ipairs(State.bombs) do
+    Bomb.draw(bomb.x, bomb.y)
+  end
+
+  -- draw players
+  for idx, player in ipairs(State.players) do
+    Player.draw(player.pixelX, player.pixelY, idx == 1)
+  end
+
+  TopBar.draw()
+end
+
+--------------------------------------------------------------------------------
 -- Bomb module (includes explosions)
 --------------------------------------------------------------------------------
+
+function Bomb.draw(x, y)
+  spr(BOMB_SPRITE, x, y, 0, 2)
+end
 
 function Bomb.place(player)
   if player.activeBombs >= player.maxBombs then return end
@@ -757,6 +772,11 @@ end
 -- Player module
 --------------------------------------------------------------------------------
 
+function Player.draw(x, y, is_player1)
+  local sprite_id = is_player1 and ASTRONAUT_BLUE or ASTRONAUT_RED
+  spr(sprite_id, x, y, 0, 2)
+end
+
 function Player.create(gridX, gridY, color, is_ai)
   return {
     gridX = gridX,
@@ -946,10 +966,10 @@ end
 
 function TIC()
   if State.game_state == GAME_STATE_SPLASH then
-    UI.update_splash()
+    Splash.update()
     return
   elseif State.game_state == GAME_STATE_MENU then
-    UI.update_menu()
+    Menu.update()
     return
   end
 
@@ -958,7 +978,7 @@ function TIC()
 
   if State.winner then
     State.win_timer = State.win_timer - 1
-    UI.draw_win_screen()
+    WinScreen.draw()
     if Input.action_pressed() and State.win_timer <= 0 then
       Game.restart()
     end
@@ -986,7 +1006,7 @@ function TIC()
   if Game.check_death_by_explosion() then return end
   if Game.check_death_by_collision() then return end
 
-  UI.draw_game()
+  GameBoard.draw()
 end
 
 -- <TILES>
