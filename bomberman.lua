@@ -134,6 +134,23 @@ function UI.draw_win_screen()
 end
 
 function UI.draw_game()
+  -- draw wall shadows first
+  for row = 1, 9 do
+    for col = 1, 15 do
+      local tile = map[row][col]
+      if tile == SOLID_WALL or tile == BREAKABLE_WALL then
+        local drawX = (col - 1) * TILE_SIZE
+        local drawY = (row - 1) * TILE_SIZE
+        rect(drawX + 2, drawY + 2, TILE_SIZE, TILE_SIZE, 1)
+      end
+    end
+  end
+
+  -- draw explosions (after shadows, before walls)
+  for _, expl in ipairs(explosions) do
+    rect(expl.x, expl.y, TILE_SIZE, TILE_SIZE, 2)  -- red
+  end
+
   -- draw map
   for row = 1, 9 do
     for col = 1, 15 do
@@ -153,6 +170,7 @@ function UI.draw_game()
     if map[pw.gridY][pw.gridX] == EMPTY then
       local drawX = (pw.gridX - 1) * TILE_SIZE
       local drawY = (pw.gridY - 1) * TILE_SIZE
+      rect(drawX + 5, drawY + 5, 10, 10, 1)  -- shadow
       rect(drawX + 3, drawY + 3, 10, 10, 4)  -- yellow background
       print("B", drawX + 5, drawY + 5, 0)
     end
@@ -161,11 +179,6 @@ function UI.draw_game()
   -- draw bombs
   for _, bomb in ipairs(bombs) do
     UI.draw_bomb_sprite(bomb.x, bomb.y)
-  end
-
-  -- draw explosions
-  for _, expl in ipairs(explosions) do
-    rect(expl.x, expl.y, TILE_SIZE, TILE_SIZE, 6)
   end
 
   -- draw players
