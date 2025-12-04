@@ -32,12 +32,13 @@ local GAME_STATE_SPLASH = 0
 local GAME_STATE_MENU = 1
 local GAME_STATE_PLAYING = 2
 
--- helper function for shadowed text
-local function print_shadow(text, x, y, color, fixed, scale)
-  scale = scale or 1
-  print(text, x + 1, y + 1, 1, fixed, scale)
-  print(text, x, y, color, fixed, scale)
-end
+-- modules
+local Map = {}
+local UI = {}
+local Bomb = {}
+local AI = {}
+local Player = {}
+local Game = {}
 
 -- game state variables
 local game_state = GAME_STATE_SPLASH
@@ -78,25 +79,21 @@ local initial_map = {
   {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1}
 }
 
-local function create_player(gridX, gridY, color, is_ai)
-  return {
-    gridX = gridX,
-    gridY = gridY,
-    pixelX = (gridX - 1) * TILE_SIZE,
-    pixelY = (gridY - 1) * TILE_SIZE,
-    moving = false,
-    maxBombs = 1,
-    activeBombs = 0,
-    color = color,
-    is_ai = is_ai,
-    moveTimer = 0,
-    bombCooldown = 0,
-    spawnX = gridX,
-    spawnY = gridY
-  }
+--------------------------------------------------------------------------------
+-- Map module
+--------------------------------------------------------------------------------
+
+function Map.can_move_to(gridX, gridY)
+  if gridX < 1 or gridY < 1 or gridX > 15 or gridY > 9 then
+    return false
+  end
+  if map[gridY][gridX] >= SOLID_WALL then
+    return false
+  end
+  return true
 end
 
-local function init_powerups()
+function Map.init_powerups()
   powerups = {}
   for row = 1, 9 do
     for col = 1, 15 do
@@ -107,24 +104,196 @@ local function init_powerups()
   end
 end
 
-local function init_game()
-  players = {}
-  table.insert(players, create_player(2, 2, 12, false))  -- human player (blue)
-  table.insert(players, create_player(14, 8, 2, true))   -- AI enemy (red)
-  init_powerups()
+--------------------------------------------------------------------------------
+-- UI module
+--------------------------------------------------------------------------------
+
+function UI.print_shadow(text, x, y, color, fixed, scale)
+  scale = scale or 1
+  print(text, x + 1, y + 1, 1, fixed, scale)
+  print(text, x, y, color, fixed, scale)
 end
 
-local function can_move_to(gridX, gridY)
-  if gridX < 1 or gridY < 1 or gridX > 15 or gridY > 9 then
-    return false
-  end
-  if map[gridY][gridX] >= SOLID_WALL then
-    return false
-  end
-  return true
+function UI.draw_player_sprite(x, y, is_player1)
+  local sprite_id = is_player1 and ASTRONAUT_BLUE or ASTRONAUT_RED
+  spr(sprite_id, x, y, 0, 2)
 end
 
-local function is_dangerous(gridX, gridY)
+function UI.draw_bomb_sprite(x, y)
+  spr(BOMB_SPRITE, x, y, 0, 2)
+end
+
+function UI.draw_win_screen()
+  cls(0)
+  rect(20, 30, 200, 80, 12)
+  rect(22, 32, 196, 76, 0)
+  UI.print_shadow("PLAYER "..winner.." WON!", 70, 55, 12, false, 2)
+  if win_timer <= 0 or math.floor(win_timer / 15) % 2 == 0 then
+    UI.print_shadow("Press A to restart", 70, 80, 12)
+  end
+end
+
+function UI.draw_game()
+  -- draw map
+  for row = 1, 9 do
+    for col = 1, 15 do
+      local tile = map[row][col]
+      local drawX = (col - 1) * TILE_SIZE
+      local drawY = (row - 1) * TILE_SIZE
+      if tile == SOLID_WALL then
+        spr(SOLID_WALL_SPRITE, drawX, drawY, 0, 2)
+      elseif tile == BREAKABLE_WALL then
+        spr(BREAKABLE_WALL_SPRITE, drawX, drawY, 0, 2)
+      end
+    end
+  end
+
+  -- draw powerups
+  for _, pw in ipairs(powerups) do
+    if map[pw.gridY][pw.gridX] == EMPTY then
+      local drawX = (pw.gridX - 1) * TILE_SIZE
+      local drawY = (pw.gridY - 1) * TILE_SIZE
+      rect(drawX + 3, drawY + 3, 10, 10, 4)  -- yellow background
+      print("B", drawX + 5, drawY + 5, 0)
+    end
+  end
+
+  -- draw bombs
+  for _, bomb in ipairs(bombs) do
+    UI.draw_bomb_sprite(bomb.x, bomb.y)
+  end
+
+  -- draw explosions
+  for _, expl in ipairs(explosions) do
+    rect(expl.x, expl.y, TILE_SIZE, TILE_SIZE, 6)
+  end
+
+  -- draw players
+  for idx, player in ipairs(players) do
+    UI.draw_player_sprite(player.pixelX, player.pixelY, idx == 1)
+  end
+
+  -- score display
+  print(score[1]..":"..score[2], 5, 2, 12)
+  print("ARROWS:MOVE A:BOMB", 60, 2, 15)
+  local human = players[1]
+  local available = human.maxBombs - human.activeBombs
+  print("BOMBS:"..available.."/"..human.maxBombs, 180, 2, 11)
+end
+
+function UI.update_splash()
+  cls(0)
+
+  -- title with line break
+  UI.print_shadow("Bomberman", 85, 50, 12, false, 2)
+  UI.print_shadow("Clone", 100, 70, 12, false, 2)
+
+  splash_timer = splash_timer - 1
+  if splash_timer <= 0 then
+    game_state = GAME_STATE_MENU
+  end
+end
+
+function UI.update_menu()
+  cls(0)
+
+  -- title
+  UI.print_shadow("Bomberman", 85, 30, 12, false, 2)
+  UI.print_shadow("Clone", 100, 50, 12, false, 2)
+
+  -- menu options
+  local play_color = (menu_selection == 1) and 11 or 15
+  local exit_color = (menu_selection == 2) and 11 or 15
+
+  -- selection indicator
+  if menu_selection == 1 then
+    UI.print_shadow(">", 85, 90, 11)
+  else
+    UI.print_shadow(">", 85, 110, 11)
+  end
+
+  -- menu items
+  UI.print_shadow("Play", 95, 90, play_color)
+  UI.print_shadow("Exit", 95, 110, exit_color)
+
+  -- handle input
+  if btnp(0) then  -- up
+    menu_selection = 1
+  elseif btnp(1) then  -- down
+    menu_selection = 2
+  elseif btnp(4) then  -- A button (select)
+    if menu_selection == 1 then
+      game_state = GAME_STATE_PLAYING
+      Game.init()
+    else
+      exit()
+    end
+  end
+end
+
+--------------------------------------------------------------------------------
+-- Bomb module
+--------------------------------------------------------------------------------
+
+function Bomb.place(player)
+  if player.activeBombs >= player.maxBombs then return end
+
+  local bombX = (player.gridX - 1) * TILE_SIZE
+  local bombY = (player.gridY - 1) * TILE_SIZE
+
+  for _, b in ipairs(bombs) do
+    if b.x == bombX and b.y == bombY then
+      return
+    end
+  end
+
+  table.insert(bombs, {x = bombX, y = bombY, timer = BOMB_TIMER, owner = player})
+  player.activeBombs = player.activeBombs + 1
+end
+
+function Bomb.explode(bombX, bombY)
+  sfx(0, nil, 30)  -- explosion sound, 30 ticks = 0.5 sec
+  table.insert(explosions, {x = bombX, y = bombY, timer = EXPLOSION_TIMER})
+
+  local gridX = math.floor(bombX / TILE_SIZE) + 1
+  local gridY = math.floor(bombY / TILE_SIZE) + 1
+
+  -- horizontal explosion
+  for _, dir in ipairs({-1, 1}) do
+    local explX = bombX + dir * TILE_SIZE
+    local eGridX = gridX + dir
+    if eGridX >= 1 and eGridX <= 15 then
+      local tile = map[gridY][eGridX]
+      if tile == EMPTY then
+        table.insert(explosions, {x = explX, y = bombY, timer = EXPLOSION_TIMER})
+      elseif tile == BREAKABLE_WALL then
+        map[gridY][eGridX] = EMPTY
+        table.insert(explosions, {x = explX, y = bombY, timer = EXPLOSION_TIMER})
+      end
+    end
+  end
+
+  -- vertical explosion
+  for _, dir in ipairs({-1, 1}) do
+    local explY = bombY + dir * TILE_SIZE
+    local eGridY = gridY + dir
+    if eGridY >= 1 and eGridY <= 9 then
+      local tile = map[eGridY][gridX]
+      if tile == EMPTY then
+        table.insert(explosions, {x = bombX, y = explY, timer = EXPLOSION_TIMER})
+      elseif tile == BREAKABLE_WALL then
+        map[eGridY][gridX] = EMPTY
+        table.insert(explosions, {x = bombX, y = explY, timer = EXPLOSION_TIMER})
+      end
+    end
+  end
+end
+
+--------------------------------------------------------------------------------
+-- AI module
+--------------------------------------------------------------------------------
+
+function AI.is_dangerous(gridX, gridY)
   for _, expl in ipairs(explosions) do
     local explGridX = math.floor(expl.x / TILE_SIZE) + 1
     local explGridY = math.floor(expl.y / TILE_SIZE) + 1
@@ -165,7 +334,7 @@ local function is_dangerous(gridX, gridY)
   return false
 end
 
-local function in_blast_zone(gridX, gridY, bombGridX, bombGridY)
+function AI.in_blast_zone(gridX, gridY, bombGridX, bombGridY)
   if gridX == bombGridX and gridY == bombGridY then
     return true
   end
@@ -189,7 +358,7 @@ local function in_blast_zone(gridX, gridY, bombGridX, bombGridY)
   return false
 end
 
-local function has_adjacent_breakable_wall(gridX, gridY)
+function AI.has_adjacent_breakable_wall(gridX, gridY)
   local dirs = {{0, -1}, {0, 1}, {-1, 0}, {1, 0}}
   for _, dir in ipairs(dirs) do
     local checkX = gridX + dir[1]
@@ -203,16 +372,16 @@ local function has_adjacent_breakable_wall(gridX, gridY)
   return false
 end
 
-local function has_escape_route(gridX, gridY)
+function AI.has_escape_route(gridX, gridY)
   local dirs = {{0, -1}, {0, 1}, {-1, 0}, {1, 0}}
   for _, dir in ipairs(dirs) do
     local newX = gridX + dir[1]
     local newY = gridY + dir[2]
-    if can_move_to(newX, newY) and not is_dangerous(newX, newY) then
+    if Map.can_move_to(newX, newY) and not AI.is_dangerous(newX, newY) then
       for _, dir2 in ipairs(dirs) do
         local safeX = newX + dir2[1]
         local safeY = newY + dir2[2]
-        if can_move_to(safeX, safeY) then
+        if Map.can_move_to(safeX, safeY) then
           return true
         end
       end
@@ -221,23 +390,7 @@ local function has_escape_route(gridX, gridY)
   return false
 end
 
-local function place_bomb(player)
-  if player.activeBombs >= player.maxBombs then return end
-
-  local bombX = (player.gridX - 1) * TILE_SIZE
-  local bombY = (player.gridY - 1) * TILE_SIZE
-
-  for _, b in ipairs(bombs) do
-    if b.x == bombX and b.y == bombY then
-      return
-    end
-  end
-
-  table.insert(bombs, {x = bombX, y = bombY, timer = BOMB_TIMER, owner = player})
-  player.activeBombs = player.activeBombs + 1
-end
-
-local function escape_from_own_bomb(player)
+function AI.escape_from_bomb(player)
   local bombGridX = player.gridX
   local bombGridY = player.gridY
   local dirs = {{0, -1}, {0, 1}, {-1, 0}, {1, 0}}
@@ -249,10 +402,10 @@ local function escape_from_own_bomb(player)
     local newX = player.gridX + dir[1]
     local newY = player.gridY + dir[2]
 
-    if can_move_to(newX, newY) then
+    if Map.can_move_to(newX, newY) then
       local sc = 0
 
-      if not in_blast_zone(newX, newY, bombGridX, bombGridY) then
+      if not AI.in_blast_zone(newX, newY, bombGridX, bombGridY) then
         sc = sc + 100
       end
 
@@ -260,9 +413,9 @@ local function escape_from_own_bomb(player)
         local checkX = newX + dir2[1]
         local checkY = newY + dir2[2]
         if not (checkX == bombGridX and checkY == bombGridY) then
-          if can_move_to(checkX, checkY) then
+          if Map.can_move_to(checkX, checkY) then
             sc = sc + 10
-            if not in_blast_zone(checkX, checkY, bombGridX, bombGridY) then
+            if not AI.in_blast_zone(checkX, checkY, bombGridX, bombGridY) then
               sc = sc + 20
             end
           end
@@ -282,7 +435,7 @@ local function escape_from_own_bomb(player)
   end
 end
 
-local function ai_move_and_bomb(player)
+function AI.move_and_bomb(player)
   local human = players[1]
   if not human then return end
 
@@ -292,15 +445,15 @@ local function ai_move_and_bomb(player)
 
   local should_bomb = false
   if dist <= 2 then should_bomb = true end
-  if has_adjacent_breakable_wall(player.gridX, player.gridY) then
+  if AI.has_adjacent_breakable_wall(player.gridX, player.gridY) then
     should_bomb = true
   end
 
   if should_bomb and player.activeBombs < player.maxBombs and player.bombCooldown <= 0 then
-    if has_escape_route(player.gridX, player.gridY) then
-      place_bomb(player)
+    if AI.has_escape_route(player.gridX, player.gridY) then
+      Bomb.place(player)
       player.bombCooldown = 90
-      escape_from_own_bomb(player)
+      AI.escape_from_bomb(player)
       return
     end
   end
@@ -321,7 +474,7 @@ local function ai_move_and_bomb(player)
   for _, dir in ipairs(dirs) do
     local newGridX = player.gridX + dir[1]
     local newGridY = player.gridY + dir[2]
-    if can_move_to(newGridX, newGridY) and not is_dangerous(newGridX, newGridY) then
+    if Map.can_move_to(newGridX, newGridY) and not AI.is_dangerous(newGridX, newGridY) then
       player.gridX = newGridX
       player.gridY = newGridY
       return
@@ -329,7 +482,68 @@ local function ai_move_and_bomb(player)
   end
 end
 
-local function update_player_movement(player)
+function AI.update(player)
+  if player.moving then return end
+
+  local in_danger = AI.is_dangerous(player.gridX, player.gridY)
+
+  if in_danger then
+    local dirs = {{0, -1}, {0, 1}, {-1, 0}, {1, 0}}
+    local best_dir = nil
+    local best_safe = false
+
+    for _, dir in ipairs(dirs) do
+      local newX = player.gridX + dir[1]
+      local newY = player.gridY + dir[2]
+      if Map.can_move_to(newX, newY) then
+        local safe = not AI.is_dangerous(newX, newY)
+        if safe and not best_safe then
+          best_dir = dir
+          best_safe = true
+        elseif not best_dir then
+          best_dir = dir
+        end
+      end
+    end
+
+    if best_dir then
+      player.gridX = player.gridX + best_dir[1]
+      player.gridY = player.gridY + best_dir[2]
+    end
+    player.moveTimer = 0
+    return
+  end
+
+  player.moveTimer = player.moveTimer + 1
+  if player.moveTimer < 20 then return end
+
+  player.moveTimer = 0
+  AI.move_and_bomb(player)
+end
+
+--------------------------------------------------------------------------------
+-- Player module
+--------------------------------------------------------------------------------
+
+function Player.create(gridX, gridY, color, is_ai)
+  return {
+    gridX = gridX,
+    gridY = gridY,
+    pixelX = (gridX - 1) * TILE_SIZE,
+    pixelY = (gridY - 1) * TILE_SIZE,
+    moving = false,
+    maxBombs = 1,
+    activeBombs = 0,
+    color = color,
+    is_ai = is_ai,
+    moveTimer = 0,
+    bombCooldown = 0,
+    spawnX = gridX,
+    spawnY = gridY
+  }
+end
+
+function Player.update_movement(player)
   local targetX = (player.gridX - 1) * TILE_SIZE
   local targetY = (player.gridY - 1) * TILE_SIZE
 
@@ -354,7 +568,7 @@ local function update_player_movement(player)
   end
 end
 
-local function handle_human_input(player)
+function Player.handle_input(player)
   if player.moving then return end
 
   local newGridX = player.gridX
@@ -370,65 +584,17 @@ local function handle_human_input(player)
     newGridX = player.gridX + 1
   end
 
-  if can_move_to(newGridX, newGridY) then
+  if Map.can_move_to(newGridX, newGridY) then
     player.gridX = newGridX
     player.gridY = newGridY
   end
 
   if btnp(4) then
-    place_bomb(player)
+    Bomb.place(player)
   end
 end
 
-local function update_ai(player)
-  if player.moving then return end
-
-  local in_danger = is_dangerous(player.gridX, player.gridY)
-
-  if in_danger then
-    local dirs = {{0, -1}, {0, 1}, {-1, 0}, {1, 0}}
-    local best_dir = nil
-    local best_safe = false
-
-    for _, dir in ipairs(dirs) do
-      local newX = player.gridX + dir[1]
-      local newY = player.gridY + dir[2]
-      if can_move_to(newX, newY) then
-        local safe = not is_dangerous(newX, newY)
-        if safe and not best_safe then
-          best_dir = dir
-          best_safe = true
-        elseif not best_dir then
-          best_dir = dir
-        end
-      end
-    end
-
-    if best_dir then
-      player.gridX = player.gridX + best_dir[1]
-      player.gridY = player.gridY + best_dir[2]
-    end
-    player.moveTimer = 0
-    return
-  end
-
-  player.moveTimer = player.moveTimer + 1
-  if player.moveTimer < 20 then return end
-
-  player.moveTimer = 0
-  ai_move_and_bomb(player)
-end
-
-local function draw_player_sprite(x, y, is_player1)
-  local sprite_id = is_player1 and ASTRONAUT_BLUE or ASTRONAUT_RED
-  spr(sprite_id, x, y, 0, 2)
-end
-
-local function draw_bomb_sprite(x, y)
-  spr(BOMB_SPRITE, x, y, 0, 2)
-end
-
-local function reset_player_entity(player)
+function Player.reset(player)
   player.gridX = player.spawnX
   player.gridY = player.spawnY
   player.pixelX = (player.spawnX - 1) * TILE_SIZE
@@ -439,61 +605,24 @@ local function reset_player_entity(player)
   player.bombCooldown = 0
 end
 
-local function explode(bombX, bombY)
-  sfx(0, nil, 30)  -- explosion sound, 30 ticks = 0.5 sec
-  table.insert(explosions, {x = bombX, y = bombY, timer = EXPLOSION_TIMER})
+--------------------------------------------------------------------------------
+-- Game module
+--------------------------------------------------------------------------------
 
-  local gridX = math.floor(bombX / TILE_SIZE) + 1
-  local gridY = math.floor(bombY / TILE_SIZE) + 1
-
-  -- horizontal explosion
-  for _, dir in ipairs({-1, 1}) do
-    local explX = bombX + dir * TILE_SIZE
-    local eGridX = gridX + dir
-    if eGridX >= 1 and eGridX <= 15 then
-      local tile = map[gridY][eGridX]
-      if tile == EMPTY then
-        table.insert(explosions, {x = explX, y = bombY, timer = EXPLOSION_TIMER})
-      elseif tile == BREAKABLE_WALL then
-        map[gridY][eGridX] = EMPTY
-        table.insert(explosions, {x = explX, y = bombY, timer = EXPLOSION_TIMER})
-      end
-    end
-  end
-
-  -- vertical explosion
-  for _, dir in ipairs({-1, 1}) do
-    local explY = bombY + dir * TILE_SIZE
-    local eGridY = gridY + dir
-    if eGridY >= 1 and eGridY <= 9 then
-      local tile = map[eGridY][gridX]
-      if tile == EMPTY then
-        table.insert(explosions, {x = bombX, y = explY, timer = EXPLOSION_TIMER})
-      elseif tile == BREAKABLE_WALL then
-        map[eGridY][gridX] = EMPTY
-        table.insert(explosions, {x = bombX, y = explY, timer = EXPLOSION_TIMER})
-      end
-    end
-  end
+function Game.init()
+  players = {}
+  table.insert(players, Player.create(2, 2, 12, false))  -- human player (blue)
+  table.insert(players, Player.create(14, 8, 2, true))   -- AI enemy (red)
+  Map.init_powerups()
 end
 
-local function set_winner(player_num)
+function Game.set_winner(player_num)
   winner = player_num
   win_timer = 60
   score[player_num] = score[player_num] + 1
 end
 
-local function draw_win_screen()
-  cls(0)
-  rect(20, 30, 200, 80, 12)
-  rect(22, 32, 196, 76, 0)
-  print_shadow("PLAYER "..winner.." WON!", 70, 55, 12, false, 2)
-  if win_timer <= 0 or math.floor(win_timer / 15) % 2 == 0 then
-    print_shadow("Press A to restart", 70, 80, 12)
-  end
-end
-
-local function restart_game()
+function Game.restart()
   winner = nil
   win_timer = 0
   bombs = {}
@@ -507,115 +636,21 @@ local function restart_game()
   end
 
   for _, p in ipairs(players) do
-    reset_player_entity(p)
+    Player.reset(p)
   end
-  init_powerups()
+  Map.init_powerups()
 end
 
-local function draw_game()
-  -- draw map
-  for row = 1, 9 do
-    for col = 1, 15 do
-      local tile = map[row][col]
-      local drawX = (col - 1) * TILE_SIZE
-      local drawY = (row - 1) * TILE_SIZE
-      if tile == SOLID_WALL then
-        spr(SOLID_WALL_SPRITE, drawX, drawY, 0, 2)
-      elseif tile == BREAKABLE_WALL then
-        spr(BREAKABLE_WALL_SPRITE, drawX, drawY, 0, 2)
-      end
-    end
-  end
-
-  -- draw powerups
-  for _, pw in ipairs(powerups) do
-    if map[pw.gridY][pw.gridX] == EMPTY then
-      local drawX = (pw.gridX - 1) * TILE_SIZE
-      local drawY = (pw.gridY - 1) * TILE_SIZE
-      rect(drawX + 3, drawY + 3, 10, 10, 4)  -- yellow background
-      print("B", drawX + 5, drawY + 5, 0)
-    end
-  end
-
-  -- draw bombs
-  for _, bomb in ipairs(bombs) do
-    draw_bomb_sprite(bomb.x, bomb.y)
-  end
-
-  -- draw explosions
-  for _, expl in ipairs(explosions) do
-    rect(expl.x, expl.y, TILE_SIZE, TILE_SIZE, 6)
-  end
-
-  -- draw players
-  for idx, player in ipairs(players) do
-    draw_player_sprite(player.pixelX, player.pixelY, idx == 1)
-  end
-
-  -- score display
-  print(score[1]..":"..score[2], 5, 2, 12)
-  print("ARROWS:MOVE A:BOMB", 60, 2, 15)
-  local human = players[1]
-  local available = human.maxBombs - human.activeBombs
-  print("BOMBS:"..available.."/"..human.maxBombs, 180, 2, 11)
-end
-
-local function update_splash()
-  cls(0)
-
-  -- title with line break
-  print_shadow("Bomberman", 85, 50, 12, false, 2)
-  print_shadow("Clone", 100, 70, 12, false, 2)
-
-  splash_timer = splash_timer - 1
-  if splash_timer <= 0 then
-    game_state = GAME_STATE_MENU
-  end
-end
-
-local function update_menu()
-  cls(0)
-
-  -- title
-  print_shadow("Bomberman", 85, 30, 12, false, 2)
-  print_shadow("Clone", 100, 50, 12, false, 2)
-
-  -- menu options
-  local play_color = (menu_selection == 1) and 11 or 15
-  local exit_color = (menu_selection == 2) and 11 or 15
-
-  -- selection indicator
-  if menu_selection == 1 then
-    print_shadow(">", 85, 90, 11)
-  else
-    print_shadow(">", 85, 110, 11)
-  end
-
-  -- menu items
-  print_shadow("Play", 95, 90, play_color)
-  print_shadow("Exit", 95, 110, exit_color)
-
-  -- handle input
-  if btnp(0) then  -- up
-    menu_selection = 1
-  elseif btnp(1) then  -- down
-    menu_selection = 2
-  elseif btnp(4) then  -- A button (select)
-    if menu_selection == 1 then
-      game_state = GAME_STATE_PLAYING
-      init_game()
-    else
-      exit()
-    end
-  end
-end
+--------------------------------------------------------------------------------
+-- Main game loop
+--------------------------------------------------------------------------------
 
 function TIC()
   if game_state == GAME_STATE_SPLASH then
-    update_splash()
+    UI.update_splash()
     return
   elseif game_state == GAME_STATE_MENU then
-    update_menu()
+    UI.update_menu()
     return
   end
 
@@ -624,20 +659,20 @@ function TIC()
 
   if winner then
     win_timer = win_timer - 1
-    draw_win_screen()
+    UI.draw_win_screen()
     if btnp(4) and win_timer <= 0 then
-      restart_game()
+      Game.restart()
     end
     return
   end
 
   -- update all players
   for _, player in ipairs(players) do
-    update_player_movement(player)
+    Player.update_movement(player)
     if player.is_ai then
-      update_ai(player)
+      AI.update(player)
     else
-      handle_human_input(player)
+      Player.handle_input(player)
     end
   end
 
@@ -646,7 +681,7 @@ function TIC()
     local bomb = bombs[i]
     bomb.timer = bomb.timer - 1
     if bomb.timer <= 0 then
-      explode(bomb.x, bomb.y)
+      Bomb.explode(bomb.x, bomb.y)
       if bomb.owner then
         bomb.owner.activeBombs = bomb.owner.activeBombs - 1
       end
@@ -683,7 +718,7 @@ function TIC()
       local explGridY = math.floor(expl.y / TILE_SIZE) + 1
       if player.gridX == explGridX and player.gridY == explGridY then
         local winner_idx = (idx == 1) and 2 or 1
-        set_winner(winner_idx)
+        Game.set_winner(winner_idx)
         return
       end
     end
@@ -693,12 +728,12 @@ function TIC()
   local human = players[1]
   for _, player in ipairs(players) do
     if player.is_ai and human.gridX == player.gridX and human.gridY == player.gridY then
-      set_winner(2)
+      Game.set_winner(2)
       return
     end
   end
 
-  draw_game()
+  UI.draw_game()
 end
 
 -- <TILES>
