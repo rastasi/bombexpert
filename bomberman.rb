@@ -186,7 +186,7 @@ def draw_game
 
   # draw bombs
   $bombs.each do |bomb|
-    circ(bomb[:x] + 8, bomb[:y] + 8, 6, 2)
+    draw_bomb_sprite(bomb[:x], bomb[:y])
   end
 
   # draw explosions
@@ -195,8 +195,8 @@ def draw_game
   end
 
   # draw all players
-  $players.each do |player|
-    rect(player[:pixelX] + 2, player[:pixelY] + 2, PLAYER_SIZE, PLAYER_SIZE, player[:color])
+  $players.each_with_index do |player, idx|
+    draw_player_sprite(player[:pixelX], player[:pixelY], idx == 0)
   end
 
   # score display
@@ -655,6 +655,23 @@ def can_move_to?(gridX, gridY)
   true
 end
 
+# sprite indices (in SPRITES section, starts at 256)
+# 8x8 sprites scaled to ~12-16 pixels
+ASTRONAUT_BLUE = 256   # sprite 0
+ASTRONAUT_RED = 257    # sprite 1
+BOMB_SPRITE = 258      # sprite 2
+
+def draw_player_sprite(x, y, is_player1)
+  sprite_id = is_player1 ? ASTRONAUT_BLUE : ASTRONAUT_RED
+  # 8x8 sprite with scale=2 -> 16x16, offset to center
+  spr(sprite_id, x, y, 0, 2)
+end
+
+def draw_bomb_sprite(x, y)
+  # 8x8 sprite with scale=2 -> 16x16
+  spr(BOMB_SPRITE, x, y, 0, 2)
+end
+
 # reset any player to spawn position
 def reset_player_entity(player)
   player[:gridX] = player[:spawnX]
@@ -713,6 +730,12 @@ end
 # 018:ccca00ccaaaa0ccecaaa0ceeaaaa0ceeaaaa0cee8888ccee000cceeecccceeee
 # 019:cacccccccaaaaaaacaaacaaacaaaaccccaaaaaaac8888888cc000cccecccccec
 # 020:ccca00ccaaaa0ccecaaa0ceeaaaa0ceeaaaa0cee8888ccee000cceeecccceeee
+# 032:00cccc0000cccc000ccccccc0ccc1ccc0cc111cc0ccc1cccccccccccccc00ccc
+# 033:00000000000000000c0000c00c0000c00cc00cc000cccc0000cccc0000000000
+# 048:0cc00ccc0cc00ccc00c00cc000c00cc0000cc000000cc00000000000000c0c00
+# 049:00000000000000000000000000000000000000000000000000000000000c0c00
+# 064:00222200022222200222f2220222f22202222222002222000022220000200200
+# 065:00000000000000000200002002000020022002200022220000222200000c0c00
 # </TILES>
 
 # <WAVES>
@@ -728,6 +751,12 @@ end
 # <TRACKS>
 # 000:100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 # </TRACKS>
+
+# <SPRITES>
+# 000:00cccc000c1cc1c00ccccccc00cccc000c0cc0c00c0cc0c00000000000000000
+# 001:00222200021221200222222200222200020220200202202000000000000000000
+# 002:00043000001111000111111001111110011111100011110000011000000000000
+# </SPRITES>
 
 # <PALETTE>
 # 000:1a1c2c5d275db13e53ef7d57ffcd75a7f07038b76425717929366f3b5dc941a6f673eff7f4f4f494b0c2566c86333c57
