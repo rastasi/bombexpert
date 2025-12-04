@@ -37,6 +37,14 @@ local AI_BOMB_COOLDOWN = 90
 -- Movement
 local MOVE_SPEED = 2
 
+-- Directions (up, down, left, right)
+local DIRECTIONS = {
+  {0, -1},
+  {0, 1},
+  {-1, 0},
+  {1, 0}
+}
+
 -- Sprite indices (SPRITES section loads at 256+)
 local PLAYER_BLUE = 256
 local PLAYER_RED = 257
@@ -44,17 +52,18 @@ local BOMB_SPRITE = 258
 local BREAKABLE_WALL_SPRITE = 259
 local SOLID_WALL_SPRITE = 260
 
--- Colors
+-- Colors (Sweetie 16 palette)
 local COLOR_BLACK = 0
 local COLOR_SHADOW = 1
 local COLOR_RED = 2
 local COLOR_ORANGE = 3
 local COLOR_YELLOW = 4
 local COLOR_GREEN = 6
-local COLOR_GREEN_LIGHT = 11
-local COLOR_BLUE = 12
+local COLOR_BLUE = 9
+local COLOR_BLUE_LIGHT = 10
+local COLOR_CYAN = 11
+local COLOR_LIGHT = 12      -- f4f4f4 - lightest color
 local COLOR_GRAY_LIGHT = 13
-local COLOR_WHITE = 15
 
 -- Game states
 local GAME_STATE_SPLASH = 0
@@ -286,8 +295,8 @@ function Map.can_move_to(gridX, gridY, player)
 end
 
 function Map.is_spawn_area(row, col)
-  local lastCol = MAP_WIDTH - 1   -- 28
-  local lastRow = MAP_HEIGHT - 1  -- 16
+  local lastCol = MAP_WIDTH - 1   -- 26 (for MAP_WIDTH=27)
+  local lastRow = MAP_HEIGHT - 1  -- 14 (for MAP_HEIGHT=15)
   -- Top-left spawn (2,2) and adjacent
   if (row == 2 and col == 2) or (row == 2 and col == 3) or (row == 3 and col == 2) then
     return true
@@ -375,8 +384,8 @@ function TopBar.draw()
 
   -- Player 1 (left side) - blue
   if p1 then
-    print("P1", 2, 2, COLOR_BLUE)
-    print("W:"..State.score[1], 16, 2, COLOR_BLUE)
+    print("P1", 2, 2, COLOR_BLUE_LIGHT)
+    print("W:"..State.score[1], 16, 2, COLOR_BLUE_LIGHT)
     print("B:"..p1.maxBombs, 40, 2, COLOR_YELLOW)
     print("P:"..p1.bombPower, 64, 2, COLOR_ORANGE)
   end
@@ -427,14 +436,14 @@ function Menu.update()
   UI.print_shadow("Clone", 100, 40, COLOR_BLUE, false, 2)
 
   local unselected = COLOR_GRAY_LIGHT
-  local p1_color = (State.menu_selection == 1) and COLOR_GREEN_LIGHT or unselected
-  local p2_color = (State.menu_selection == 2) and COLOR_GREEN_LIGHT or unselected
-  local help_color = (State.menu_selection == 3) and COLOR_GREEN_LIGHT or unselected
-  local credits_color = (State.menu_selection == 4) and COLOR_GREEN_LIGHT or unselected
-  local exit_color = (State.menu_selection == 5) and COLOR_GREEN_LIGHT or unselected
+  local p1_color = (State.menu_selection == 1) and COLOR_CYAN or unselected
+  local p2_color = (State.menu_selection == 2) and COLOR_CYAN or unselected
+  local help_color = (State.menu_selection == 3) and COLOR_CYAN or unselected
+  local credits_color = (State.menu_selection == 4) and COLOR_CYAN or unselected
+  local exit_color = (State.menu_selection == 5) and COLOR_CYAN or unselected
 
   local cursor_y = 60 + (State.menu_selection - 1) * 14
-  UI.print_shadow(">", 60, cursor_y, COLOR_GREEN_LIGHT)
+  UI.print_shadow(">", 60, cursor_y, COLOR_CYAN)
 
   UI.print_shadow("1 Player Game", 70, 60, p1_color)
   UI.print_shadow("2 Player Game", 70, 74, p2_color)
@@ -477,24 +486,24 @@ function Help.update()
   UI.print_shadow("Help", 100, 8, COLOR_BLUE, false, 2)
 
   -- Controls section
-  UI.print_shadow("Controls", 20, 30, COLOR_WHITE)
+  UI.print_shadow("Controls", 20, 30, COLOR_LIGHT)
 
   -- P1 controls
   rect(20, 42, 90, 30, COLOR_SHADOW)
-  rect(19, 41, 90, 30, COLOR_BLUE)
-  print("Player 1 (Blue)", 22, 44, COLOR_WHITE)
-  print("Move: Arrow Keys", 22, 54, COLOR_WHITE)
-  print("Bomb: SPACE", 22, 64, COLOR_WHITE)
+  rect(19, 41, 90, 30, COLOR_BLUE_LIGHT)
+  print("Player 1 (Blue)", 22, 44, COLOR_LIGHT)
+  print("Move: Arrow Keys", 22, 54, COLOR_LIGHT)
+  print("Bomb: SPACE", 22, 64, COLOR_LIGHT)
 
   -- P2 controls
   rect(130, 42, 90, 30, COLOR_SHADOW)
   rect(129, 41, 90, 30, COLOR_RED)
-  print("Player 2 (Red)", 132, 44, COLOR_WHITE)
-  print("Move: W A S D", 132, 54, COLOR_WHITE)
-  print("Bomb: G", 132, 64, COLOR_WHITE)
+  print("Player 2 (Red)", 132, 44, COLOR_LIGHT)
+  print("Move: W A S D", 132, 54, COLOR_LIGHT)
+  print("Bomb: G", 132, 64, COLOR_LIGHT)
 
   -- Powerups section
-  UI.print_shadow("Powerups", 20, 80, COLOR_WHITE)
+  UI.print_shadow("Powerups", 20, 80, COLOR_LIGHT)
 
   -- Bomb powerup
   rect(22, 93, 5, 5, COLOR_SHADOW)
@@ -509,7 +518,7 @@ function Help.update()
   print("+1 Blast range", 32, 104, COLOR_ORANGE)
 
   -- Back instruction
-  UI.print_shadow("Press SPACE to return", 60, 122, COLOR_GREEN_LIGHT)
+  UI.print_shadow("Press SPACE to return", 60, 122, COLOR_CYAN)
 
   if Input.action_pressed() then
     State.game_state = GAME_STATE_MENU
@@ -525,12 +534,12 @@ function Credits.update()
 
   UI.print_shadow("Credits", 90, 20, COLOR_BLUE, false, 2)
 
-  UI.print_shadow("Author: Zsolt Tasnadi", 60, 50, 12)
-  UI.print_shadow("Powered by Claude", 68, 66, 12)
-  UI.print_shadow("Sponsored by Zen Heads", 52, 82, 12)
+  UI.print_shadow("Author: Zsolt Tasnadi", 60, 50, COLOR_LIGHT)
+  UI.print_shadow("Powered by Claude", 68, 66, COLOR_LIGHT)
+  UI.print_shadow("Sponsored by Zen Heads", 52, 82, COLOR_LIGHT)
   UI.print_shadow("Happy X-MAS!", 80, 98, COLOR_RED)
 
-  UI.print_shadow("Press SPACE to return", 60, 122, COLOR_GREEN_LIGHT)
+  UI.print_shadow("Press SPACE to return", 60, 122, COLOR_CYAN)
 
   if Input.action_pressed() then
     State.game_state = GAME_STATE_MENU
@@ -792,38 +801,8 @@ function AI.is_dangerous(gridX, gridY)
   return false
 end
 
-function AI.in_blast_zone(gridX, gridY, bombGridX, bombGridY)
-  if gridX == bombGridX and gridY == bombGridY then
-    return true
-  end
-
-  if gridY == bombGridY and math.abs(gridX - bombGridX) <= 1 then
-    if gridX < bombGridX then
-      return State.map[gridY][gridX + 1] ~= SOLID_WALL
-    elseif gridX > bombGridX then
-      return State.map[gridY][gridX - 1] ~= SOLID_WALL
-    end
-  end
-
-  if gridX == bombGridX and math.abs(gridY - bombGridY) <= 1 then
-    if gridY < bombGridY then
-      return State.map[gridY + 1][gridX] ~= SOLID_WALL
-    elseif gridY > bombGridY then
-      return State.map[gridY - 1][gridX] ~= SOLID_WALL
-    end
-  end
-
-  return false
-end
-
 function AI.has_adjacent_breakable_wall(gridX, gridY)
-  local dirs = {
-    {0, -1},
-    {0, 1},
-    {-1, 0},
-    {1, 0}
-  }
-  for _, dir in ipairs(dirs) do
+  for _, dir in ipairs(DIRECTIONS) do
     local checkX = gridX + dir[1]
     local checkY = gridY + dir[2]
     if checkX >= 1 and checkX <= MAP_WIDTH and checkY >= 1 and checkY <= MAP_HEIGHT then
@@ -864,15 +843,9 @@ end
 function AI.find_safe_cell(gridX, gridY, player)
   -- Find a cell to escape to that's OUTSIDE the bomb's blast line
   local power = player.bombPower
-  local dirs = {
-    {0, -1},
-    {0, 1},
-    {-1, 0},
-    {1, 0}
-  }
 
   -- First try: find a path that gets us completely out of blast line
-  for _, dir in ipairs(dirs) do
+  for _, dir in ipairs(DIRECTIONS) do
     local newX = gridX + dir[1]
     local newY = gridY + dir[2]
     if Map.can_move_to(newX, newY, player) and not AI.is_dangerous(newX, newY) then
@@ -881,7 +854,7 @@ function AI.find_safe_cell(gridX, gridY, player)
         return {newX, newY}
       end
       -- If not, check if we can turn corner to get out
-      for _, dir2 in ipairs(dirs) do
+      for _, dir2 in ipairs(DIRECTIONS) do
         local safeX = newX + dir2[1]
         local safeY = newY + dir2[2]
         if Map.can_move_to(safeX, safeY, player) and not AI.is_dangerous(safeX, safeY) then
@@ -944,7 +917,7 @@ function AI.move_and_bomb(player, target)
     end
   end
 
-  -- Build direction list
+  -- Build direction list (preferred directions first, then all others)
   local dirs = {}
   if dx > 0 then table.insert(dirs, {1, 0})
   elseif dx < 0 then table.insert(dirs, {-1, 0})
@@ -953,13 +926,7 @@ function AI.move_and_bomb(player, target)
   elseif dy < 0 then table.insert(dirs, {0, -1})
   end
 
-  local all_dirs = {
-    {0, -1},
-    {0, 1},
-    {-1, 0},
-    {1, 0}
-  }
-  for _, d in ipairs(all_dirs) do
+  for _, d in ipairs(DIRECTIONS) do
     table.insert(dirs, d)
   end
 
@@ -1010,16 +977,10 @@ function AI.update(player, target)
   local in_danger = AI.is_dangerous(player.gridX, player.gridY)
 
   if in_danger then
-    local dirs = {
-    {0, -1},
-    {0, 1},
-    {-1, 0},
-    {1, 0}
-  }
     local best_dir = nil
     local best_safe = false
 
-    for _, dir in ipairs(dirs) do
+    for _, dir in ipairs(DIRECTIONS) do
       local newX = player.gridX + dir[1]
       local newY = player.gridY + dir[2]
       if Map.can_move_to(newX, newY, player) then
@@ -1103,19 +1064,19 @@ function Player.update_movement(player)
   end
 end
 
-function Player.handle_input(player)
+function Player.handle_input(player, input)
   if player.moving then return end
 
   local newGridX = player.gridX
   local newGridY = player.gridY
 
-  if Input.up() then
+  if input.up() then
     newGridY = player.gridY - 1
-  elseif Input.down() then
+  elseif input.down() then
     newGridY = player.gridY + 1
-  elseif Input.left() then
+  elseif input.left() then
     newGridX = player.gridX - 1
-  elseif Input.right() then
+  elseif input.right() then
     newGridX = player.gridX + 1
   end
 
@@ -1124,36 +1085,27 @@ function Player.handle_input(player)
     player.gridY = newGridY
   end
 
-  if Input.action_pressed() then
+  if input.action() then
     Bomb.place(player)
   end
 end
 
-function Player.handle_input_p2(player)
-  if player.moving then return end
+-- Input configurations for each player
+local P1_INPUT = {
+  up = Input.up,
+  down = Input.down,
+  left = Input.left,
+  right = Input.right,
+  action = Input.action_pressed
+}
 
-  local newGridX = player.gridX
-  local newGridY = player.gridY
-
-  if Input.p2_up() then
-    newGridY = player.gridY - 1
-  elseif Input.p2_down() then
-    newGridY = player.gridY + 1
-  elseif Input.p2_left() then
-    newGridX = player.gridX - 1
-  elseif Input.p2_right() then
-    newGridX = player.gridX + 1
-  end
-
-  if Map.can_move_to(newGridX, newGridY, player) then
-    player.gridX = newGridX
-    player.gridY = newGridY
-  end
-
-  if Input.p2_action() then
-    Bomb.place(player)
-  end
-end
+local P2_INPUT = {
+  up = Input.p2_up,
+  down = Input.p2_down,
+  left = Input.p2_left,
+  right = Input.p2_right,
+  action = Input.p2_action
+}
 
 function Player.reset(player)
   player.gridX = player.spawnX
@@ -1230,10 +1182,9 @@ function Game.update()
     Player.update_movement(player)
     if player.is_ai then
       AI.update(player, human_player)
-    elseif idx == 1 then
-      Player.handle_input(player)
     else
-      Player.handle_input_p2(player)
+      local input = (idx == 1) and P1_INPUT or P2_INPUT
+      Player.handle_input(player, input)
     end
   end
 
