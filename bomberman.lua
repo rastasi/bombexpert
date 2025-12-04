@@ -13,6 +13,7 @@
 local TILE_SIZE = 16
 local BOMB_TIMER = 90
 local EXPLOSION_TIMER = 30
+local SPREAD_DELAY = 6  -- ticks per cell spread (0.1 sec at 60fps)
 
 local EMPTY = 0
 local SOLID_WALL = 1
@@ -170,7 +171,18 @@ function UI.draw_game()
 
   -- draw explosions (after shadows, before walls)
   for _, expl in ipairs(explosions) do
-    rect(expl.x, expl.y, TILE_SIZE, TILE_SIZE, 2)  -- red
+    if expl.spread <= 0 then
+      -- fully spread - draw full cell
+      rect(expl.x, expl.y, TILE_SIZE, TILE_SIZE, 2)  -- red
+    else
+      -- still spreading - draw partial from center
+      local progress = 1 - (expl.spread / (expl.dist * SPREAD_DELAY))
+      if progress > 0 then
+        local size = math.floor(TILE_SIZE * progress)
+        local offset = math.floor((TILE_SIZE - size) / 2)
+        rect(expl.x + offset, expl.y + offset, size, size, 2)
+      end
+    end
   end
 
   -- draw map
@@ -294,7 +306,7 @@ end
 function Bomb.explode(bombX, bombY, power)
   power = power or 1
   sfx(0, nil, 30)  -- explosion sound, 30 ticks = 0.5 sec
-  table.insert(explosions, {x = bombX, y = bombY, timer = EXPLOSION_TIMER})
+  table.insert(explosions, {x = bombX, y = bombY, timer = EXPLOSION_TIMER, dist = 0, spread = 0})
 
   local gridX = math.floor(bombX / TILE_SIZE) + 1
   local gridY = math.floor(bombY / TILE_SIZE) + 1
@@ -309,10 +321,10 @@ function Bomb.explode(bombX, bombY, power)
       if tile == SOLID_WALL then break end
       if tile == BREAKABLE_WALL then
         map[gridY][eGridX] = EMPTY
-        table.insert(explosions, {x = explX, y = bombY, timer = EXPLOSION_TIMER})
+        table.insert(explosions, {x = explX, y = bombY, timer = EXPLOSION_TIMER, dist = dist, spread = dist * SPREAD_DELAY})
         break  -- stop at breakable wall
       end
-      table.insert(explosions, {x = explX, y = bombY, timer = EXPLOSION_TIMER})
+      table.insert(explosions, {x = explX, y = bombY, timer = EXPLOSION_TIMER, dist = dist, spread = dist * SPREAD_DELAY})
     end
   end
 
@@ -326,10 +338,10 @@ function Bomb.explode(bombX, bombY, power)
       if tile == SOLID_WALL then break end
       if tile == BREAKABLE_WALL then
         map[eGridY][gridX] = EMPTY
-        table.insert(explosions, {x = bombX, y = explY, timer = EXPLOSION_TIMER})
+        table.insert(explosions, {x = bombX, y = explY, timer = EXPLOSION_TIMER, dist = dist, spread = dist * SPREAD_DELAY})
         break  -- stop at breakable wall
       end
-      table.insert(explosions, {x = bombX, y = explY, timer = EXPLOSION_TIMER})
+      table.insert(explosions, {x = bombX, y = explY, timer = EXPLOSION_TIMER, dist = dist, spread = dist * SPREAD_DELAY})
     end
   end
 end
@@ -739,9 +751,13 @@ function TIC()
   -- update explosions
   for i = #explosions, 1, -1 do
     local expl = explosions[i]
-    expl.timer = expl.timer - 1
-    if expl.timer <= 0 then
-      table.remove(explosions, i)
+    if expl.spread > 0 then
+      expl.spread = expl.spread - 1
+    else
+      expl.timer = expl.timer - 1
+      if expl.timer <= 0 then
+        table.remove(explosions, i)
+      end
     end
   end
 
@@ -763,15 +779,17 @@ function TIC()
     end
   end
 
-  -- check death by explosion
+  -- check death by explosion (only fully spread explosions)
   for idx, player in ipairs(players) do
     for _, expl in ipairs(explosions) do
-      local explGridX = math.floor(expl.x / TILE_SIZE) + 1
-      local explGridY = math.floor(expl.y / TILE_SIZE) + 1
-      if player.gridX == explGridX and player.gridY == explGridY then
-        local winner_idx = (idx == 1) and 2 or 1
-        Game.set_winner(winner_idx)
-        return
+      if expl.spread <= 0 then
+        local explGridX = math.floor(expl.x / TILE_SIZE) + 1
+        local explGridY = math.floor(expl.y / TILE_SIZE) + 1
+        if player.gridX == explGridX and player.gridY == explGridY then
+          local winner_idx = (idx == 1) and 2 or 1
+          Game.set_winner(winner_idx)
+          return
+        end
       end
     end
   end
