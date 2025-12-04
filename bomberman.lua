@@ -53,6 +53,7 @@ local COLOR_YELLOW = 4
 local COLOR_GREEN = 6
 local COLOR_GREEN_LIGHT = 11
 local COLOR_BLUE = 12
+local COLOR_GRAY_LIGHT = 13
 local COLOR_WHITE = 15
 
 -- Game states
@@ -60,6 +61,7 @@ local GAME_STATE_SPLASH = 0
 local GAME_STATE_MENU = 1
 local GAME_STATE_PLAYING = 2
 local GAME_STATE_HELP = 3
+local GAME_STATE_CREDITS = 4
 
 -- Powerup spawn chance
 local POWERUP_SPAWN_CHANCE = 0.3
@@ -76,6 +78,7 @@ local TopBar = {}
 local Splash = {}
 local Menu = {}
 local Help = {}
+local Credits = {}
 local WinScreen = {}
 local GameBoard = {}
 local Bomb = {}
@@ -423,25 +426,28 @@ function Menu.update()
   UI.print_shadow("Bomberman", 85, 20, COLOR_BLUE, false, 2)
   UI.print_shadow("Clone", 100, 40, COLOR_BLUE, false, 2)
 
-  local p1_color = (State.menu_selection == 1) and COLOR_GREEN_LIGHT or COLOR_WHITE
-  local p2_color = (State.menu_selection == 2) and COLOR_GREEN_LIGHT or COLOR_WHITE
-  local help_color = (State.menu_selection == 3) and COLOR_GREEN_LIGHT or COLOR_WHITE
-  local exit_color = (State.menu_selection == 4) and COLOR_GREEN_LIGHT or COLOR_WHITE
+  local unselected = COLOR_GRAY_LIGHT
+  local p1_color = (State.menu_selection == 1) and COLOR_GREEN_LIGHT or unselected
+  local p2_color = (State.menu_selection == 2) and COLOR_GREEN_LIGHT or unselected
+  local help_color = (State.menu_selection == 3) and COLOR_GREEN_LIGHT or unselected
+  local credits_color = (State.menu_selection == 4) and COLOR_GREEN_LIGHT or unselected
+  local exit_color = (State.menu_selection == 5) and COLOR_GREEN_LIGHT or unselected
 
-  local cursor_y = 65 + (State.menu_selection - 1) * 16
+  local cursor_y = 60 + (State.menu_selection - 1) * 14
   UI.print_shadow(">", 60, cursor_y, COLOR_GREEN_LIGHT)
 
-  UI.print_shadow("1 Player Game", 70, 65, p1_color)
-  UI.print_shadow("2 Player Game", 70, 81, p2_color)
-  UI.print_shadow("Help", 70, 97, help_color)
-  UI.print_shadow("Exit", 70, 113, exit_color)
+  UI.print_shadow("1 Player Game", 70, 60, p1_color)
+  UI.print_shadow("2 Player Game", 70, 74, p2_color)
+  UI.print_shadow("Help", 70, 88, help_color)
+  UI.print_shadow("Credits", 70, 102, credits_color)
+  UI.print_shadow("Exit", 70, 116, exit_color)
 
   if Input.up_pressed() then
     State.menu_selection = State.menu_selection - 1
-    if State.menu_selection < 1 then State.menu_selection = 4 end
+    if State.menu_selection < 1 then State.menu_selection = 5 end
   elseif Input.down_pressed() then
     State.menu_selection = State.menu_selection + 1
-    if State.menu_selection > 4 then State.menu_selection = 1 end
+    if State.menu_selection > 5 then State.menu_selection = 1 end
   elseif Input.action_pressed() then
     if State.menu_selection == 1 then
       State.two_player_mode = false
@@ -453,6 +459,8 @@ function Menu.update()
       Game.init()
     elseif State.menu_selection == 3 then
       State.game_state = GAME_STATE_HELP
+    elseif State.menu_selection == 4 then
+      State.game_state = GAME_STATE_CREDITS
     else
       exit()
     end
@@ -501,6 +509,27 @@ function Help.update()
   print("+1 Blast range", 32, 104, COLOR_ORANGE)
 
   -- Back instruction
+  UI.print_shadow("Press SPACE to return", 60, 122, COLOR_GREEN_LIGHT)
+
+  if Input.action_pressed() then
+    State.game_state = GAME_STATE_MENU
+  end
+end
+
+--------------------------------------------------------------------------------
+-- Credits module
+--------------------------------------------------------------------------------
+
+function Credits.update()
+  cls(COLOR_BLACK)
+
+  UI.print_shadow("Credits", 90, 20, COLOR_BLUE, false, 2)
+
+  UI.print_shadow("Author: Zsolt Tasnadi", 60, 50, 12)
+  UI.print_shadow("Powered by Claude", 68, 66, 12)
+  UI.print_shadow("Sponsored by Zen Heads", 52, 82, 12)
+  UI.print_shadow("Happy X-MAS!", 80, 98, COLOR_RED)
+
   UI.print_shadow("Press SPACE to return", 60, 122, COLOR_GREEN_LIGHT)
 
   if Input.action_pressed() then
@@ -1228,6 +1257,9 @@ function TIC()
     return
   elseif State.game_state == GAME_STATE_HELP then
     Help.update()
+    return
+  elseif State.game_state == GAME_STATE_CREDITS then
+    Credits.update()
     return
   end
 
