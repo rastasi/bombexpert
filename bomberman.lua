@@ -525,7 +525,7 @@ local function draw_game()
     if map[pw.gridY][pw.gridX] == EMPTY then
       local drawX = (pw.gridX - 1) * TILE_SIZE
       local drawY = (pw.gridY - 1) * TILE_SIZE
-      rect(drawX + 3, drawY + 3, 10, 10, 6)
+      rect(drawX + 3, drawY + 3, 10, 10, 4)  -- yellow background
       print("B", drawX + 5, drawY + 5, 0)
     end
   end
