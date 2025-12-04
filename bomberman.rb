@@ -16,21 +16,31 @@ EMPTY = 0
 SOLID_WALL = 1
 BREAKABLE_WALL = 2
 
-# player
-$playerX = 16
-$playerY = 16
+# player (grid position and pixel position for animation)
+$player = {
+  gridX: 1,
+  gridY: 1,
+  pixelX: 16,
+  pixelY: 16,
+  moving: false
+}
 
 # game objects
 $bombs = []
 $explosions = []
 
-# enemy
+# enemy (grid position and pixel position for animation)
 $enemy = {
-  x: 208,
-  y: 112,
-  dir: 0,
+  gridX: 13,
+  gridY: 7,
+  pixelX: 208,
+  pixelY: 112,
+  moving: false,
   moveTimer: 0
 }
+
+# animation speed (pixels per frame)
+MOVE_SPEED = 2
 
 # 1=solid wall, 2=breakable wall
 $map = [
@@ -48,22 +58,13 @@ $map = [
 def TIC
   cls(0)
 
-  # handle input
-  newX = $playerX
-  newY = $playerY
-
-  newY = $playerY - 1 if btn(0)
-  newY = $playerY + 1 if btn(1)
-  newX = $playerX - 1 if btn(2)
-  newX = $playerX + 1 if btn(3)
-
-  $playerX = newX unless solid?(newX, $playerY)
-  $playerY = newY unless solid?($playerX, newY)
+  # handle player movement
+  update_player
 
   # place bomb
   if btnp(4)
-    bombX = ($playerX / TILE_SIZE).floor * TILE_SIZE
-    bombY = ($playerY / TILE_SIZE).floor * TILE_SIZE
+    bombX = $player[:gridX] * TILE_SIZE
+    bombY = $player[:gridY] * TILE_SIZE
     $bombs << { x: bombX, y: bombY, timer: BOMB_TIMER }
   end
 
@@ -109,88 +110,143 @@ def TIC
   # update enemy
   update_enemy
 
-  # draw player
-  rect($playerX, $playerY, PLAYER_SIZE, PLAYER_SIZE, 12)
+  # draw player (centered in tile)
+  rect($player[:pixelX] + 2, $player[:pixelY] + 2, PLAYER_SIZE, PLAYER_SIZE, 12)
 
-  # draw enemy
-  rect($enemy[:x], $enemy[:y], PLAYER_SIZE, PLAYER_SIZE, 2)
+  # draw enemy (centered in tile)
+  rect($enemy[:pixelX] + 2, $enemy[:pixelY] + 2, PLAYER_SIZE, PLAYER_SIZE, 2)
 
-  # check player death by explosion
+  # check player death by explosion (grid-based)
   $explosions.each do |expl|
-    if $playerX < expl[:x] + TILE_SIZE && $playerX + PLAYER_SIZE > expl[:x] &&
-       $playerY < expl[:y] + TILE_SIZE && $playerY + PLAYER_SIZE > expl[:y]
-      $playerX = 16
-      $playerY = 16
+    explGridX = (expl[:x] / TILE_SIZE).floor
+    explGridY = (expl[:y] / TILE_SIZE).floor
+    if $player[:gridX] == explGridX && $player[:gridY] == explGridY
+      reset_player
     end
   end
 
-  # check player death by enemy
-  if $playerX < $enemy[:x] + PLAYER_SIZE && $playerX + PLAYER_SIZE > $enemy[:x] &&
-     $playerY < $enemy[:y] + PLAYER_SIZE && $playerY + PLAYER_SIZE > $enemy[:y]
-    $playerX = 16
-    $playerY = 16
+  # check player death by enemy (grid-based)
+  if $player[:gridX] == $enemy[:gridX] && $player[:gridY] == $enemy[:gridY]
+    reset_player
   end
 
-  # check enemy death by explosion
+  # check enemy death by explosion (grid-based)
   $explosions.each do |expl|
-    if $enemy[:x] < expl[:x] + TILE_SIZE && $enemy[:x] + PLAYER_SIZE > expl[:x] &&
-       $enemy[:y] < expl[:y] + TILE_SIZE && $enemy[:y] + PLAYER_SIZE > expl[:y]
-      $enemy[:x] = 208
-      $enemy[:y] = 112
+    explGridX = (expl[:x] / TILE_SIZE).floor
+    explGridY = (expl[:y] / TILE_SIZE).floor
+    if $enemy[:gridX] == explGridX && $enemy[:gridY] == explGridY
+      reset_enemy
     end
   end
 
   print("ARROWS:MOVE A:BOMB", 50, 2, 15)
 end
 
-def solid?(x, y)
-  gridLeft = (x / TILE_SIZE).floor
-  gridTop = (y / TILE_SIZE).floor
-  gridRight = ((x + PLAYER_SIZE - 1) / TILE_SIZE).floor
-  gridBottom = ((y + PLAYER_SIZE - 1) / TILE_SIZE).floor
+def update_player
+  targetX = $player[:gridX] * TILE_SIZE
+  targetY = $player[:gridY] * TILE_SIZE
 
-  return true if gridLeft < 0 || gridTop < 0 || gridRight > 14 || gridBottom > 8
-  return true if $map[gridTop][gridLeft] >= SOLID_WALL
-  return true if $map[gridTop][gridRight] >= SOLID_WALL
-  return true if $map[gridBottom][gridLeft] >= SOLID_WALL
-  return true if $map[gridBottom][gridRight] >= SOLID_WALL
-  false
-end
-
-def update_enemy
-  $enemy[:moveTimer] += 1
-  return if $enemy[:moveTimer] < 3
-  $enemy[:moveTimer] = 0
-
-  # try current direction
-  dirs = [[0, -1], [0, 1], [-1, 0], [1, 0]]
-  dir = $enemy[:dir]
-  dx = dirs[dir] ? dirs[dir][0] : 0
-  dy = dirs[dir] ? dirs[dir][1] : 0
-
-  newEnemyX = $enemy[:x] + dx
-  newEnemyY = $enemy[:y] + dy
-
-  if !solid_for_enemy?(newEnemyX, newEnemyY) && rand > 0.1
-    $enemy[:x] = newEnemyX
-    $enemy[:y] = newEnemyY
+  # animate toward target position
+  if $player[:pixelX] < targetX
+    $player[:pixelX] = [$player[:pixelX] + MOVE_SPEED, targetX].min
+    $player[:moving] = true
+  elsif $player[:pixelX] > targetX
+    $player[:pixelX] = [$player[:pixelX] - MOVE_SPEED, targetX].max
+    $player[:moving] = true
+  elsif $player[:pixelY] < targetY
+    $player[:pixelY] = [$player[:pixelY] + MOVE_SPEED, targetY].min
+    $player[:moving] = true
+  elsif $player[:pixelY] > targetY
+    $player[:pixelY] = [$player[:pixelY] - MOVE_SPEED, targetY].max
+    $player[:moving] = true
   else
-    $enemy[:dir] = rand(4)
+    $player[:moving] = false
+  end
+
+  # only accept input when not moving
+  return if $player[:moving]
+
+  newGridX = $player[:gridX]
+  newGridY = $player[:gridY]
+
+  if btn(0)
+    newGridY = $player[:gridY] - 1
+  elsif btn(1)
+    newGridY = $player[:gridY] + 1
+  elsif btn(2)
+    newGridX = $player[:gridX] - 1
+  elsif btn(3)
+    newGridX = $player[:gridX] + 1
+  end
+
+  # check if new grid position is valid
+  if can_move_to?(newGridX, newGridY)
+    $player[:gridX] = newGridX
+    $player[:gridY] = newGridY
   end
 end
 
-def solid_for_enemy?(x, y)
-  gridLeft = (x / TILE_SIZE).floor
-  gridTop = (y / TILE_SIZE).floor
-  gridRight = ((x + PLAYER_SIZE - 1) / TILE_SIZE).floor
-  gridBottom = ((y + PLAYER_SIZE - 1) / TILE_SIZE).floor
+def update_enemy
+  targetX = $enemy[:gridX] * TILE_SIZE
+  targetY = $enemy[:gridY] * TILE_SIZE
 
-  return true if gridLeft < 0 || gridTop < 0 || gridRight > 14 || gridBottom > 8
-  return true if $map[gridTop][gridLeft] >= SOLID_WALL
-  return true if $map[gridTop][gridRight] >= SOLID_WALL
-  return true if $map[gridBottom][gridLeft] >= SOLID_WALL
-  return true if $map[gridBottom][gridRight] >= SOLID_WALL
-  false
+  # animate toward target position
+  if $enemy[:pixelX] < targetX
+    $enemy[:pixelX] = [$enemy[:pixelX] + MOVE_SPEED, targetX].min
+    $enemy[:moving] = true
+  elsif $enemy[:pixelX] > targetX
+    $enemy[:pixelX] = [$enemy[:pixelX] - MOVE_SPEED, targetX].max
+    $enemy[:moving] = true
+  elsif $enemy[:pixelY] < targetY
+    $enemy[:pixelY] = [$enemy[:pixelY] + MOVE_SPEED, targetY].min
+    $enemy[:moving] = true
+  elsif $enemy[:pixelY] > targetY
+    $enemy[:pixelY] = [$enemy[:pixelY] - MOVE_SPEED, targetY].max
+    $enemy[:moving] = true
+  else
+    $enemy[:moving] = false
+  end
+
+  # only move when animation is complete
+  return if $enemy[:moving]
+
+  $enemy[:moveTimer] += 1
+  return if $enemy[:moveTimer] < 30
+
+  $enemy[:moveTimer] = 0
+
+  # pick random direction
+  dirs = [[0, -1], [0, 1], [-1, 0], [1, 0]]
+  dir = rand(4)
+  newGridX = $enemy[:gridX] + dirs[dir][0]
+  newGridY = $enemy[:gridY] + dirs[dir][1]
+
+  if can_move_to?(newGridX, newGridY)
+    $enemy[:gridX] = newGridX
+    $enemy[:gridY] = newGridY
+  end
+end
+
+def can_move_to?(gridX, gridY)
+  return false if gridX < 0 || gridY < 0 || gridX > 14 || gridY > 8
+  return false if $map[gridY][gridX] >= SOLID_WALL
+  true
+end
+
+def reset_player
+  $player[:gridX] = 1
+  $player[:gridY] = 1
+  $player[:pixelX] = 16
+  $player[:pixelY] = 16
+  $player[:moving] = false
+end
+
+def reset_enemy
+  $enemy[:gridX] = 13
+  $enemy[:gridY] = 7
+  $enemy[:pixelX] = 208
+  $enemy[:pixelY] = 112
+  $enemy[:moving] = false
 end
 
 def explode(bombX, bombY)
