@@ -214,12 +214,24 @@ end
 -- Map module
 --------------------------------------------------------------------------------
 
-function Map.can_move_to(gridX, gridY)
+function Map.can_move_to(gridX, gridY, player)
   if gridX < 1 or gridY < 1 or gridX > MAP_WIDTH or gridY > MAP_HEIGHT then
     return false
   end
   if State.map[gridY][gridX] >= SOLID_WALL then
     return false
+  end
+  -- Check for bombs (but allow staying on bomb you just placed)
+  for _, bomb in ipairs(State.bombs) do
+    local bombGridX = math.floor(bomb.x / TILE_SIZE) + 1
+    local bombGridY = math.floor(bomb.y / TILE_SIZE) + 1
+    if gridX == bombGridX and gridY == bombGridY then
+      -- Allow if player is currently on the bomb (just placed it)
+      if player and player.gridX == bombGridX and player.gridY == bombGridY then
+        return true
+      end
+      return false
+    end
   end
   return true
 end
@@ -578,16 +590,16 @@ function AI.has_adjacent_breakable_wall(gridX, gridY)
   return false
 end
 
-function AI.has_escape_route(gridX, gridY)
+function AI.has_escape_route(gridX, gridY, player)
   local dirs = {{0, -1}, {0, 1}, {-1, 0}, {1, 0}}
   for _, dir in ipairs(dirs) do
     local newX = gridX + dir[1]
     local newY = gridY + dir[2]
-    if Map.can_move_to(newX, newY) and not AI.is_dangerous(newX, newY) then
+    if Map.can_move_to(newX, newY, player) and not AI.is_dangerous(newX, newY) then
       for _, dir2 in ipairs(dirs) do
         local safeX = newX + dir2[1]
         local safeY = newY + dir2[2]
-        if Map.can_move_to(safeX, safeY) then
+        if Map.can_move_to(safeX, safeY, player) then
           return true
         end
       end
@@ -608,7 +620,7 @@ function AI.escape_from_bomb(player)
     local newX = player.gridX + dir[1]
     local newY = player.gridY + dir[2]
 
-    if Map.can_move_to(newX, newY) then
+    if Map.can_move_to(newX, newY, player) then
       local sc = 0
 
       if not AI.in_blast_zone(newX, newY, bombGridX, bombGridY) then
@@ -619,7 +631,7 @@ function AI.escape_from_bomb(player)
         local checkX = newX + dir2[1]
         local checkY = newY + dir2[2]
         if not (checkX == bombGridX and checkY == bombGridY) then
-          if Map.can_move_to(checkX, checkY) then
+          if Map.can_move_to(checkX, checkY, player) then
             sc = sc + 10
             if not AI.in_blast_zone(checkX, checkY, bombGridX, bombGridY) then
               sc = sc + 20
@@ -655,7 +667,7 @@ function AI.move_and_bomb(player, target)
   end
 
   if should_bomb and player.activeBombs < player.maxBombs and player.bombCooldown <= 0 then
-    if AI.has_escape_route(player.gridX, player.gridY) then
+    if AI.has_escape_route(player.gridX, player.gridY, player) then
       Bomb.place(player)
       player.bombCooldown = AI_BOMB_COOLDOWN
       AI.escape_from_bomb(player)
@@ -679,7 +691,7 @@ function AI.move_and_bomb(player, target)
   for _, dir in ipairs(dirs) do
     local newGridX = player.gridX + dir[1]
     local newGridY = player.gridY + dir[2]
-    if Map.can_move_to(newGridX, newGridY) and not AI.is_dangerous(newGridX, newGridY) then
+    if Map.can_move_to(newGridX, newGridY, player) and not AI.is_dangerous(newGridX, newGridY) then
       player.gridX = newGridX
       player.gridY = newGridY
       return
@@ -700,7 +712,7 @@ function AI.update(player, target)
     for _, dir in ipairs(dirs) do
       local newX = player.gridX + dir[1]
       local newY = player.gridY + dir[2]
-      if Map.can_move_to(newX, newY) then
+      if Map.can_move_to(newX, newY, player) then
         local safe = not AI.is_dangerous(newX, newY)
         if safe and not best_safe then
           best_dir = dir
@@ -790,7 +802,7 @@ function Player.handle_input(player)
     newGridX = player.gridX + 1
   end
 
-  if Map.can_move_to(newGridX, newGridY) then
+  if Map.can_move_to(newGridX, newGridY, player) then
     player.gridX = newGridX
     player.gridY = newGridY
   end
@@ -816,7 +828,7 @@ function Player.handle_input_p2(player)
     newGridX = player.gridX + 1
   end
 
-  if Map.can_move_to(newGridX, newGridY) then
+  if Map.can_move_to(newGridX, newGridY, player) then
     player.gridX = newGridX
     player.gridY = newGridY
   end
