@@ -33,6 +33,7 @@ local SPLASH_DURATION = 90    -- 1.5 seconds at 60fps
 local WIN_SCREEN_DURATION = 60
 local AI_MOVE_DELAY = 20
 local AI_BOMB_COOLDOWN = 90
+local BOMB_DANGER_THRESHOLD = 30  -- AI considers bomb dangerous below this timer
 
 -- Movement
 local MOVE_SPEED = 2
@@ -44,6 +45,7 @@ local DIRECTIONS = {
   {-1, 0},
   {1, 0}
 }
+local SPREAD_DIRS = {-1, 1}  -- negative and positive spread directions
 
 -- Sprite indices (SPRITES section loads at 256+)
 local PLAYER_BLUE = 256
@@ -433,52 +435,41 @@ end
 -- Menu module
 --------------------------------------------------------------------------------
 
+local MENU_ITEMS = {
+  {label = "1 Player Game", action = function() State.two_player_mode = false; State.game_state = GAME_STATE_PLAYING; Game.init() end},
+  {label = "2 Player Game", action = function() State.two_player_mode = true; State.game_state = GAME_STATE_PLAYING; Game.init() end},
+  {label = "Help", action = function() State.game_state = GAME_STATE_HELP end},
+  {label = "Credits", action = function() State.game_state = GAME_STATE_CREDITS end},
+  {label = "Exit", action = exit},
+}
+
+local function get_menu_color(index)
+  return (State.menu_selection == index) and COLOR_CYAN or COLOR_GRAY_LIGHT
+end
+
 function Menu.update()
   cls(COLOR_BLACK)
 
   UI.print_shadow("Bomberman", 85, 20, COLOR_BLUE, false, 2)
   UI.print_shadow("Clone", 100, 40, COLOR_BLUE, false, 2)
 
-  local unselected = COLOR_GRAY_LIGHT
-  local p1_color = (State.menu_selection == 1) and COLOR_CYAN or unselected
-  local p2_color = (State.menu_selection == 2) and COLOR_CYAN or unselected
-  local help_color = (State.menu_selection == 3) and COLOR_CYAN or unselected
-  local credits_color = (State.menu_selection == 4) and COLOR_CYAN or unselected
-  local exit_color = (State.menu_selection == 5) and COLOR_CYAN or unselected
-
   local cursor_y = 60 + (State.menu_selection - 1) * 14
   UI.print_shadow(">", 60, cursor_y, COLOR_CYAN)
 
-  UI.print_shadow("1 Player Game", 70, 60, p1_color)
-  UI.print_shadow("2 Player Game", 70, 74, p2_color)
-  UI.print_shadow("Help", 70, 88, help_color)
-  UI.print_shadow("Credits", 70, 102, credits_color)
-  UI.print_shadow("Exit", 70, 116, exit_color)
+  for i, item in ipairs(MENU_ITEMS) do
+    UI.print_shadow(item.label, 70, 60 + (i - 1) * 14, get_menu_color(i))
+  end
 
   if Input.back_pressed() then
     exit()
   elseif Input.up_pressed() then
     State.menu_selection = State.menu_selection - 1
-    if State.menu_selection < 1 then State.menu_selection = 5 end
+    if State.menu_selection < 1 then State.menu_selection = #MENU_ITEMS end
   elseif Input.down_pressed() then
     State.menu_selection = State.menu_selection + 1
-    if State.menu_selection > 5 then State.menu_selection = 1 end
+    if State.menu_selection > #MENU_ITEMS then State.menu_selection = 1 end
   elseif Input.action_pressed() then
-    if State.menu_selection == 1 then
-      State.two_player_mode = false
-      State.game_state = GAME_STATE_PLAYING
-      Game.init()
-    elseif State.menu_selection == 2 then
-      State.two_player_mode = true
-      State.game_state = GAME_STATE_PLAYING
-      Game.init()
-    elseif State.menu_selection == 3 then
-      State.game_state = GAME_STATE_HELP
-    elseif State.menu_selection == 4 then
-      State.game_state = GAME_STATE_CREDITS
-    else
-      exit()
-    end
+    MENU_ITEMS[State.menu_selection].action()
   end
 end
 
@@ -638,6 +629,45 @@ function Bomb.place(player)
   player.activeBombs = player.activeBombs + 1
 end
 
+local function spread_explosion(bombX, bombY, gridX, gridY, power, is_horizontal)
+  for _, dir in ipairs(SPREAD_DIRS) do
+    for dist = 1, power do
+      local explX, explY, eGridX, eGridY
+      if is_horizontal then
+        explX = bombX + dir * dist * TILE_SIZE
+        explY = bombY
+        eGridX = gridX + dir * dist
+        eGridY = gridY
+        if eGridX < 1 or eGridX > MAP_WIDTH then break end
+      else
+        explX = bombX
+        explY = bombY + dir * dist * TILE_SIZE
+        eGridX = gridX
+        eGridY = gridY + dir * dist
+        if eGridY < 1 or eGridY > MAP_HEIGHT then break end
+      end
+
+      local tile = State.map[eGridY][eGridX]
+      if tile == SOLID_WALL then break end
+
+      local is_breakable = tile == BREAKABLE_WALL
+      if is_breakable then
+        State.map[eGridY][eGridX] = EMPTY
+      end
+
+      table.insert(State.explosions, {
+        x = explX,
+        y = explY,
+        timer = EXPLOSION_TIMER,
+        dist = dist,
+        spread = dist * SPREAD_DELAY
+      })
+
+      if is_breakable then break end
+    end
+  end
+end
+
 function Bomb.explode(bombX, bombY, power)
   power = power or 1
   sfx(0, nil, 30)
@@ -652,63 +682,8 @@ function Bomb.explode(bombX, bombY, power)
   local gridX = math.floor(bombX / TILE_SIZE) + 1
   local gridY = math.floor(bombY / TILE_SIZE) + 1
 
-  -- horizontal explosion
-  for _, dir in ipairs({-1, 1}) do
-    for dist = 1, power do
-      local explX = bombX + dir * dist * TILE_SIZE
-      local eGridX = gridX + dir * dist
-      if eGridX < 1 or eGridX > MAP_WIDTH then break end
-      local tile = State.map[gridY][eGridX]
-      if tile == SOLID_WALL then break end
-      if tile == BREAKABLE_WALL then
-        State.map[gridY][eGridX] = EMPTY
-        table.insert(State.explosions, {
-          x = explX,
-          y = bombY,
-          timer = EXPLOSION_TIMER,
-          dist = dist,
-          spread = dist * SPREAD_DELAY
-        })
-        break
-      end
-      table.insert(State.explosions, {
-        x = explX,
-        y = bombY,
-        timer = EXPLOSION_TIMER,
-        dist = dist,
-        spread = dist * SPREAD_DELAY
-      })
-    end
-  end
-
-  -- vertical explosion
-  for _, dir in ipairs({-1, 1}) do
-    for dist = 1, power do
-      local explY = bombY + dir * dist * TILE_SIZE
-      local eGridY = gridY + dir * dist
-      if eGridY < 1 or eGridY > MAP_HEIGHT then break end
-      local tile = State.map[eGridY][gridX]
-      if tile == SOLID_WALL then break end
-      if tile == BREAKABLE_WALL then
-        State.map[eGridY][gridX] = EMPTY
-        table.insert(State.explosions, {
-          x = bombX,
-          y = explY,
-          timer = EXPLOSION_TIMER,
-          dist = dist,
-          spread = dist * SPREAD_DELAY
-        })
-        break
-      end
-      table.insert(State.explosions, {
-        x = bombX,
-        y = explY,
-        timer = EXPLOSION_TIMER,
-        dist = dist,
-        spread = dist * SPREAD_DELAY
-      })
-    end
-  end
+  spread_explosion(bombX, bombY, gridX, gridY, power, true)   -- horizontal
+  spread_explosion(bombX, bombY, gridX, gridY, power, false)  -- vertical
 end
 
 function Bomb.update_all()
@@ -748,6 +723,18 @@ end
 -- AI module
 --------------------------------------------------------------------------------
 
+local function is_blast_line_blocked(pos1, pos2, fixedCoord, is_horizontal)
+  local minPos = math.min(pos1, pos2)
+  local maxPos = math.max(pos1, pos2)
+  for i = minPos + 1, maxPos - 1 do
+    local tile = is_horizontal and State.map[fixedCoord][i] or State.map[i][fixedCoord]
+    if tile == SOLID_WALL then
+      return true
+    end
+  end
+  return false
+end
+
 function AI.is_dangerous(gridX, gridY)
   -- Check active explosions
   for _, expl in ipairs(State.explosions) do
@@ -758,43 +745,30 @@ function AI.is_dangerous(gridX, gridY)
     end
   end
 
-  -- Check bombs about to explode (timer < 30) - need to escape!
+  -- Check bombs about to explode - need to escape!
   for _, bomb in ipairs(State.bombs) do
     local bombGridX = math.floor(bomb.x / TILE_SIZE) + 1
     local bombGridY = math.floor(bomb.y / TILE_SIZE) + 1
     local power = bomb.power or 1
 
     -- Only urgent if bomb is about to explode
-    if bomb.timer < 30 then
+    if bomb.timer < BOMB_DANGER_THRESHOLD then
       if gridX == bombGridX and gridY == bombGridY then
         return true
       end
 
-      -- Check blast radius only for soon-to-explode bombs
+      -- Check horizontal blast radius
       if gridY == bombGridY and math.abs(gridX - bombGridX) <= power then
-        local blocked = false
-        local minX = math.min(gridX, bombGridX)
-        local maxX = math.max(gridX, bombGridX)
-        for x = minX + 1, maxX - 1 do
-          if State.map[gridY][x] == SOLID_WALL then
-            blocked = true
-            break
-          end
+        if not is_blast_line_blocked(gridX, bombGridX, gridY, true) then
+          return true
         end
-        if not blocked then return true end
       end
 
+      -- Check vertical blast radius
       if gridX == bombGridX and math.abs(gridY - bombGridY) <= power then
-        local blocked = false
-        local minY = math.min(gridY, bombGridY)
-        local maxY = math.max(gridY, bombGridY)
-        for y = minY + 1, maxY - 1 do
-          if State.map[y][gridX] == SOLID_WALL then
-            blocked = true
-            break
-          end
+        if not is_blast_line_blocked(gridY, bombGridY, gridX, false) then
+          return true
         end
-        if not blocked then return true end
       end
     else
       -- For bombs with more time, just avoid the bomb cell itself
@@ -1205,22 +1179,7 @@ end
 -- Main game loop
 --------------------------------------------------------------------------------
 
-function TIC()
-  if State.game_state == GAME_STATE_SPLASH then
-    Splash.update()
-    return
-  elseif State.game_state == GAME_STATE_MENU then
-    Menu.update()
-    return
-  elseif State.game_state == GAME_STATE_HELP then
-    Help.update()
-    return
-  elseif State.game_state == GAME_STATE_CREDITS then
-    Credits.update()
-    return
-  end
-
-  -- GAME_STATE_PLAYING
+local function update_playing()
   cls(COLOR_GREEN)
 
   -- ESC to return to menu
@@ -1241,6 +1200,21 @@ function TIC()
   if Game.update() then return end
 
   GameBoard.draw()
+end
+
+local STATE_HANDLERS = {
+  [GAME_STATE_SPLASH] = Splash.update,
+  [GAME_STATE_MENU] = Menu.update,
+  [GAME_STATE_HELP] = Help.update,
+  [GAME_STATE_CREDITS] = Credits.update,
+  [GAME_STATE_PLAYING] = update_playing,
+}
+
+function TIC()
+  local handler = STATE_HANDLERS[State.game_state]
+  if handler then
+    handler()
+  end
 end
 
 -- <TILES>
