@@ -59,6 +59,7 @@ local COLOR_WHITE = 15
 local GAME_STATE_SPLASH = 0
 local GAME_STATE_MENU = 1
 local GAME_STATE_PLAYING = 2
+local GAME_STATE_HELP = 3
 
 -- Powerup spawn chance
 local POWERUP_SPAWN_CHANCE = 0.3
@@ -74,6 +75,7 @@ local UI = {}
 local TopBar = {}
 local Splash = {}
 local Menu = {}
+local Help = {}
 local WinScreen = {}
 local GameBoard = {}
 local Bomb = {}
@@ -418,26 +420,28 @@ end
 function Menu.update()
   cls(COLOR_BLACK)
 
-  UI.print_shadow("Bomberman", 85, 30, COLOR_BLUE, false, 2)
-  UI.print_shadow("Clone", 100, 50, COLOR_BLUE, false, 2)
+  UI.print_shadow("Bomberman", 85, 20, COLOR_BLUE, false, 2)
+  UI.print_shadow("Clone", 100, 40, COLOR_BLUE, false, 2)
 
   local p1_color = (State.menu_selection == 1) and COLOR_GREEN_LIGHT or COLOR_WHITE
   local p2_color = (State.menu_selection == 2) and COLOR_GREEN_LIGHT or COLOR_WHITE
-  local exit_color = (State.menu_selection == 3) and COLOR_GREEN_LIGHT or COLOR_WHITE
+  local help_color = (State.menu_selection == 3) and COLOR_GREEN_LIGHT or COLOR_WHITE
+  local exit_color = (State.menu_selection == 4) and COLOR_GREEN_LIGHT or COLOR_WHITE
 
-  local cursor_y = 80 + (State.menu_selection - 1) * 20
+  local cursor_y = 65 + (State.menu_selection - 1) * 16
   UI.print_shadow(">", 60, cursor_y, COLOR_GREEN_LIGHT)
 
-  UI.print_shadow("1 Player Game", 70, 80, p1_color)
-  UI.print_shadow("2 Player Game", 70, 100, p2_color)
-  UI.print_shadow("Exit", 70, 120, exit_color)
+  UI.print_shadow("1 Player Game", 70, 65, p1_color)
+  UI.print_shadow("2 Player Game", 70, 81, p2_color)
+  UI.print_shadow("Help", 70, 97, help_color)
+  UI.print_shadow("Exit", 70, 113, exit_color)
 
   if Input.up_pressed() then
     State.menu_selection = State.menu_selection - 1
-    if State.menu_selection < 1 then State.menu_selection = 3 end
+    if State.menu_selection < 1 then State.menu_selection = 4 end
   elseif Input.down_pressed() then
     State.menu_selection = State.menu_selection + 1
-    if State.menu_selection > 3 then State.menu_selection = 1 end
+    if State.menu_selection > 4 then State.menu_selection = 1 end
   elseif Input.action_pressed() then
     if State.menu_selection == 1 then
       State.two_player_mode = false
@@ -447,9 +451,60 @@ function Menu.update()
       State.two_player_mode = true
       State.game_state = GAME_STATE_PLAYING
       Game.init()
+    elseif State.menu_selection == 3 then
+      State.game_state = GAME_STATE_HELP
     else
       exit()
     end
+  end
+end
+
+--------------------------------------------------------------------------------
+-- Help module
+--------------------------------------------------------------------------------
+
+function Help.update()
+  cls(COLOR_BLACK)
+
+  UI.print_shadow("Help", 100, 8, COLOR_BLUE, false, 2)
+
+  -- Controls section
+  UI.print_shadow("Controls", 20, 30, COLOR_WHITE)
+
+  -- P1 controls
+  rect(20, 42, 90, 30, COLOR_SHADOW)
+  rect(19, 41, 90, 30, COLOR_BLUE)
+  print("Player 1 (Blue)", 22, 44, COLOR_WHITE)
+  print("Move: Arrow Keys", 22, 54, COLOR_WHITE)
+  print("Bomb: SPACE", 22, 64, COLOR_WHITE)
+
+  -- P2 controls
+  rect(130, 42, 90, 30, COLOR_SHADOW)
+  rect(129, 41, 90, 30, COLOR_RED)
+  print("Player 2 (Red)", 132, 44, COLOR_WHITE)
+  print("Move: W A S D", 132, 54, COLOR_WHITE)
+  print("Bomb: G", 132, 64, COLOR_WHITE)
+
+  -- Powerups section
+  UI.print_shadow("Powerups", 20, 80, COLOR_WHITE)
+
+  -- Bomb powerup
+  rect(22, 93, 5, 5, COLOR_SHADOW)
+  rect(21, 92, 5, 5, COLOR_YELLOW)
+  print("B", 22, 92, COLOR_BLACK)
+  print("+1 Bomb capacity", 32, 92, COLOR_YELLOW)
+
+  -- Power powerup
+  rect(22, 105, 5, 5, COLOR_SHADOW)
+  rect(21, 104, 5, 5, COLOR_ORANGE)
+  print("P", 22, 104, COLOR_BLACK)
+  print("+1 Blast range", 32, 104, COLOR_ORANGE)
+
+  -- Back instruction
+  UI.print_shadow("Press SPACE to return", 60, 122, COLOR_GREEN_LIGHT)
+
+  if Input.action_pressed() then
+    State.game_state = GAME_STATE_MENU
   end
 end
 
@@ -1170,6 +1225,9 @@ function TIC()
     return
   elseif State.game_state == GAME_STATE_MENU then
     Menu.update()
+    return
+  elseif State.game_state == GAME_STATE_HELP then
+    Help.update()
     return
   end
 
