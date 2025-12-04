@@ -6,7 +6,7 @@
 -- version: 0.1
 -- script:  lua
 
--- luacheck: globals TIC btn btnp cls rect spr print exit sfx
+-- luacheck: globals TIC btn btnp cls rect spr print exit sfx keyp
 -- luacheck: max line length 150
 
 -- constants
@@ -175,7 +175,7 @@ function UI.draw_game()
 
   -- score display
   print(score[1]..":"..score[2], 5, 2, 12)
-  print("ARROWS:MOVE A:BOMB", 60, 2, 15)
+  print("ARROWS:MOVE SPACE:BOMB", 50, 2, 15)
   local human = players[1]
   local available = human.maxBombs - human.activeBombs
   print("BOMBS:"..available.."/"..human.maxBombs, 180, 2, 11)
@@ -221,7 +221,7 @@ function UI.update_menu()
     menu_selection = 1
   elseif btnp(1) then  -- down
     menu_selection = 2
-  elseif btnp(4) then  -- A button (select)
+  elseif btnp(4) or keyp(48) then  -- A button or Space (select)
     if menu_selection == 1 then
       game_state = GAME_STATE_PLAYING
       Game.init()
@@ -589,7 +589,7 @@ function Player.handle_input(player)
     player.gridY = newGridY
   end
 
-  if btnp(4) then
+  if btnp(4) or keyp(48) then  -- A button or Space
     Bomb.place(player)
   end
 end
@@ -660,7 +660,7 @@ function TIC()
   if winner then
     win_timer = win_timer - 1
     UI.draw_win_screen()
-    if btnp(4) and win_timer <= 0 then
+    if (btnp(4) or keyp(48)) and win_timer <= 0 then
       Game.restart()
     end
     return
