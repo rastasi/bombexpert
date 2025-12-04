@@ -970,19 +970,6 @@ function Game.check_death_by_explosion()
   return false
 end
 
-function Game.check_death_by_collision()
-  local human = State.players[1]
-  if not human then return false end
-
-  for _, player in ipairs(State.players) do
-    if player.is_ai and human.gridX == player.gridX and human.gridY == player.gridY then
-      Game.set_winner(2)
-      return true
-    end
-  end
-  return false
-end
-
 function Game.update()
   -- Get human player as target for AI
   local human_player = State.players[1]
@@ -1003,7 +990,6 @@ function Game.update()
   Powerup.check_pickup()
 
   if Game.check_death_by_explosion() then return true end
-  if Game.check_death_by_collision() then return true end
   return false
 end
 
