@@ -287,7 +287,7 @@ function Input.action_pressed()
 end
 
 function Input.back_pressed()
-  return keyp(51)  -- Backspace key
+  return keyp(51) or btnp(5)  -- Backspace key or B button
 end
 
 function Input.up()
