@@ -627,7 +627,7 @@ function Menu.update()
   cls(COLOR_BLACK)
 
   UI.print_shadow("BombExpert", 85, 20, COLOR_BLUE, false, 2)
-  UI.print_shadow("Clone", 100, 40, COLOR_BLUE, false, 2)
+
 
   local cursor_y = 60 + (State.menu_selection - 1) * 14
   UI.print_shadow(">", 60, cursor_y, COLOR_CYAN)
