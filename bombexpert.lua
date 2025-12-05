@@ -566,7 +566,7 @@ function Splash.update()
   cls(COLOR_BLACK)
 
   UI.print_shadow("BombExpert", 85, 50, COLOR_BLUE, false, 2)
-  UI.print_shadow("Clone", 100, 70, COLOR_BLUE, false, 2)
+
 
   State.splash_timer = State.splash_timer - 1
   if State.splash_timer <= 0 then
