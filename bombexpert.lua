@@ -1,6 +1,6 @@
--- title:   Bomberman Clone
+-- title:   BombExpert
 -- author:  Zsolt Tasnadi
--- desc:    Simple Bomberman clone for TIC-80
+-- desc:    Simple BombExpert for TIC-80
 -- site:    http://teletype.hu
 -- license: MIT License
 -- version: 0.2
@@ -565,7 +565,7 @@ function Splash.update()
 
   cls(COLOR_BLACK)
 
-  UI.print_shadow("Bomberman", 85, 50, COLOR_BLUE, false, 2)
+  UI.print_shadow("BombExpert", 85, 50, COLOR_BLUE, false, 2)
   UI.print_shadow("Clone", 100, 70, COLOR_BLUE, false, 2)
 
   State.splash_timer = State.splash_timer - 1
@@ -626,7 +626,7 @@ end
 function Menu.update()
   cls(COLOR_BLACK)
 
-  UI.print_shadow("Bomberman", 85, 20, COLOR_BLUE, false, 2)
+  UI.print_shadow("BombExpert", 85, 20, COLOR_BLUE, false, 2)
   UI.print_shadow("Clone", 100, 40, COLOR_BLUE, false, 2)
 
   local cursor_y = 60 + (State.menu_selection - 1) * 14

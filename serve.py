@@ -7,7 +7,7 @@ import os
 import webbrowser
 
 PORT = 3333
-DIRECTORY = "bomberman"
+DIRECTORY = "bombexpert"
 
 os.chdir(os.path.join(os.path.dirname(os.path.abspath(__file__)), DIRECTORY))
 

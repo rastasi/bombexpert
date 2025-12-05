@@ -1,6 +1,6 @@
-# Bomberman Clone
+# BombExpert
 
-A classic Bomberman clone for [TIC-80](https://tic80.com/) fantasy console.
+A classic BombExpert for [TIC-80](https://tic80.com/) fantasy console.
 
 ## Features
 
@@ -48,12 +48,12 @@ A classic Bomberman clone for [TIC-80](https://tic80.com/) fantasy console.
 
 ### In TIC-80
 ```bash
-load bomberman.lua
+load bombexpert.lua
 run
 ```
 
 ### In Browser
-Use the HTML export in the `bomberman/` folder with the included server:
+Use the HTML export in the `bombexpert/` folder with the included server:
 ```bash
 python serve.py
 ```
@@ -68,7 +68,7 @@ Then open http://localhost:3333 in your browser.
 
 ```
 bomberman/
-├── bomberman.lua    # Main game source code
+├── bombexpert.lua    # Main game source code
 ├── serve.py         # Simple HTTP server for browser testing
 └── README.md        # This file
 ```
