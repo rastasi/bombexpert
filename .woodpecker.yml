@@ -1,0 +1,38 @@
+environment: &environment
+  GAME_NAME: bombexpert
+  GAME_LANG: lua
+
+steps:
+  - name: build
+    image: rastasi/tic80pro:latest
+    environment:
+      <<: *environment
+      XDG_RUNTIME_DIR: /tmp
+    commands:
+      - tic80 --cli --skip --fs=. --cmd="load $GAME_NAME.$GAME_LANG & save $GAME_NAME & export html $GAME_NAME.html & exit"
+
+  - name: artifact
+    image: alpine
+    environment:
+      <<: *environment
+      DROPAREA_HOST: vps.teletype.hu
+      DROPAREA_PORT: 2223
+      DROPAREA_TARGET_PATH: /home/drop
+      DROPAREA_USER: drop
+      DROPAREA_SSH_PASSWORD:
+        from_secret: droparea_ssh_password
+    commands:
+      - apk add --no-cache openssh-client sshpass
+      - mkdir -p /root/.ssh
+      - sshpass -p $DROPAREA_SSH_PASSWORD scp -o StrictHostKeyChecking=no -P $DROPAREA_PORT $GAME_NAME.$GAME_LANG $GAME_NAME.tic $GAME_NAME.html.zip $DROPAREA_USER@$DROPAREA_HOST:$DROPAREA_TARGET_PATH
+
+  - name: update
+    image: alpine
+    environment:
+      <<: *environment
+      UPDATE_SERVER: https://games.vps.teletype.hu
+      UPDATE_SECRET:
+        from_secret: update_secret_key
+    commands:
+      - apk add --no-cache curl
+      - curl "$UPDATE_SERVER/update?secret=$UPDATE_SECRET&name=$GAME_NAME&platform=tic80"
