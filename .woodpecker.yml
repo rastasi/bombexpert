@@ -4,7 +4,7 @@ environment: &environment
 
 steps:
   - name: build
-    image: rastasi/tic80pro:latest
+    image: gitea.vps.teletype.hu/games/tic80pro:latest
     environment:
       <<: *environment
       XDG_RUNTIME_DIR: /tmp
